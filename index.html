@@ -262,7 +262,6 @@ input[type=checkbox]{-webkit-appearance:auto;appearance:auto;width:19px;height:1
 .hlDoneInfo .photorow{margin:0;}
 .hlPhotoThumb{cursor:pointer;}
 
-/* Hiệu chỉnh: Tab Plan (Kế hoạch Cleaning Shutdown - Start-up) — timeline nhập thủ công */
 table.histtbl td .item-area{white-space:nowrap;}
 
 /* Hiệu chỉnh: nhập dữ liệu từ file CSV/Excel + tải template — dùng chung cho Highlight & Plan */
@@ -459,7 +458,6 @@ table.histtbl tr:last-child td{border-bottom:none;}
   <div class="tabs" role="tablist">
     <button class="tab" data-tab="check" aria-selected="true" title="Checklist"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="1.5"/><path d="M9 4V2.6h6V4"/><path d="M9 12l2 2 4-4.5"/></svg></span><span class="lbl">Checklist</span></button>
     <button class="tab" data-tab="highlight" aria-selected="false" title="Highlight"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span><span class="lbl">Highlight</span></button>
-    <button class="tab" data-tab="cleanplan" aria-selected="false" title="Plan — Kế hoạch Cleaning Shutdown-Start-up"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="1.8"/><path d="M3.5 9h17M8 3v3M16 3v3"/><path d="M8 13.5h3M8 17h6"/></svg></span><span class="lbl">Plan</span></button>
     <button class="tab" data-tab="evidence" aria-selected="false" title="Cleaning Evidence — Lưu ảnh bằng chứng vệ sinh theo vị trí thiết bị"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M8 6l1.6-2.4h4.8L16 6"/><circle cx="12" cy="13" r="3.4"/></svg></span><span class="lbl">Evidence</span></button>
     <button class="tab" data-tab="edit" aria-selected="false" title="Chỉnh sửa Checklist"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l.9-3.6L16.4 5 19 7.6 7.6 19z"/><path d="M14.5 6.9l2.6 2.6"/></svg></span><span class="lbl">Chỉnh sửa</span></button>
     <button class="tab" data-tab="history" aria-selected="false" title="Lịch sử"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span><span class="lbl">Lịch sử</span></button>
@@ -472,7 +470,6 @@ table.histtbl tr:last-child td{border-bottom:none;}
   <div class="main">
     <div class="view active" id="view-check"></div>
     <div class="view" id="view-highlight"></div>
-    <div class="view" id="view-cleanplan"></div>
     <div class="view" id="view-evidence"></div>
     <div class="view" id="view-edit"></div>
     <div class="view" id="view-history"></div>
@@ -805,7 +802,6 @@ const LS_ITEMS = "ild_startup_checklist_items_v2";
 const LS_SETTINGS = "ild_startup_checklist_settings_v1";
 const LS_LOG = "ild_startup_checklist_log_v1";
 const LS_HIGHLIGHT = "ild_startup_checklist_highlight_v1";
-const LS_CLEANPLAN = "ild_startup_checklist_cleanplan_v1";
 const LS_DEVICE = "ild_startup_checklist_device_id_v1";
 const LS_EVIDENCE_TREE = "ild_startup_checklist_evidence_tree_v1";
 const LS_EVIDENCE_TREE_TS = "ild_startup_checklist_evidence_tree_ts_v1";
@@ -924,17 +920,16 @@ function getFirestoreDb(){
 /* Hiệu chỉnh: sửa lỗi đồng bộ "hồi sinh" dữ liệu đã xoá — trước đây mergeRemoteData() chỉ CỘNG DỒN
    (thêm bản ghi remote chưa có ở máy này), nên nếu máy A xoá 1 phiên Lịch sử rồi đồng bộ, máy A sẽ đọc
    lại file JSON cũ (chưa có xoá) và VÔ TÌNH thêm lại bản ghi vừa xoá. Nay lưu danh sách ID đã xoá
-   (tombstone) cho history/highlight/cleanplan, đưa vào file đồng bộ, và merge ưu tiên tombstone trước
+   (tombstone) cho history/highlight, đưa vào file đồng bộ, và merge ưu tiên tombstone trước
    khi cộng dồn dữ liệu — id đã nằm trong tombstone sẽ không bao giờ được thêm lại. */
 function getDeletedIds(){
   try{
     const raw = JSON.parse(localStorage.getItem(LS_DELETED) || "{}");
     return {
       history: Array.isArray(raw.history) ? raw.history : [],
-      highlight: Array.isArray(raw.highlight) ? raw.highlight : [],
-      cleanplan: Array.isArray(raw.cleanplan) ? raw.cleanplan : []
+      highlight: Array.isArray(raw.highlight) ? raw.highlight : []
     };
-  }catch(e){ return {history:[], highlight:[], cleanplan:[]}; }
+  }catch(e){ return {history:[], highlight:[]}; }
 }
 function setDeletedIds(d){ localStorage.setItem(LS_DELETED, JSON.stringify(d)); }
 function markDeleted(kind, id){
@@ -1128,9 +1123,11 @@ function applyBranding(){
 
 /* ===================== DRAFT STATE ===================== */
 function blankState(){
-  /* Hiệu chỉnh: bỏ Dòng sản phẩm/Batch/QA phụ trách khỏi đầu đề phiên — "Người thực hiện" đã có ở từng hạng mục là đủ. */
+  /* Hiệu chỉnh: bỏ Dòng sản phẩm/Batch/QA phụ trách khỏi đầu đề phiên — "Người thực hiện" đã có ở từng hạng mục là đủ.
+     Hiệu chỉnh: thêm "Đợt (Tháng/Năm)" — gắn rõ phiên Checklist thuộc đợt Shutdown/Start-up nào, độc lập với
+     Ngày bắt đầu/kết thúc (phòng trường hợp phiên chấm vắt qua 2 tháng). Mặc định theo tháng hiện tại. */
   return {
-    header:{ dateStart: todayISO(), dateEnd: todayISO(), note:"" },
+    header:{ dateStart: todayISO(), dateEnd: todayISO(), period: currentPeriod(), note:"" },
     items:{},
     updatedAt: 0
   };
@@ -1338,12 +1335,15 @@ function renderCheck(){
     <div class="ss-item stage"><span class="ss-lbl">Công đoạn</span><b>${esc(current)}</b></div>
   </div>
 
+  ${EDITING_HISTORY_ID ? `<div class="hint" style="margin-bottom:10px;">🖊️ Đang <b>sửa phiên đã Submit</b> (${esc(fmtDateRangeVN(h))}) — bấm <b>"💾 Cập nhật"</b> để lưu thay đổi vào Lịch sử, hoặc <b>"Huỷ sửa"</b> để quay lại. Phiên đang chấm dở trước đó (nếu có) đã được giữ tạm, sẽ trả lại sau khi xong.</div>` : ""}
+
   <div class="card">
     <div class="card-h"><span>Thông tin phiên Start-up</span><span class="rule"></span></div>
     <div class="grid g3">
+      <label class="fld"><span class="lab">Đợt (Tháng/Năm)</span><input class="inp" type="month" id="hPeriod" value="${esc(h.period||activePeriodFromHeader())}"></label>
       <label class="fld"><span class="lab">Ngày bắt đầu</span><input class="inp" type="date" id="hDateStart" value="${esc(h.dateStart)}"></label>
       <label class="fld"><span class="lab">Ngày kết thúc</span><input class="inp" type="date" id="hDateEnd" value="${esc(h.dateEnd)}"></label>
-      <label class="fld"><span class="lab">Ghi chú chung</span><input class="inp" id="hNote" value="${esc(h.note)}" placeholder="Ghi chú cho cả phiên (tuỳ chọn)"></label>
+      <label class="fld" style="grid-column:span 3;"><span class="lab">Ghi chú chung</span><input class="inp" id="hNote" value="${esc(h.note)}" placeholder="Ghi chú cho cả phiên (tuỳ chọn)"></label>
     </div>
     <!-- Hiệu chỉnh: bỏ Dòng sản phẩm/Batch/QA phụ trách khỏi đầu đề mục — datalist vẫn giữ lại vì ô "Người thực hiện" của từng hạng mục bên dưới còn dùng -->
     <datalist id="staffList">${SETTINGS.staff.map(n=>`<option value="${esc(n)}">`).join("")}</datalist>
@@ -1403,19 +1403,27 @@ function renderCheck(){
 
   <div class="card">
     <div class="btnrow">
+      ${EDITING_HISTORY_ID ? `
+      <button class="btn teal" id="btnUpdateHistory">💾 Cập nhật</button>
+      <button class="btn ghost" id="btnCancelEditHistory">✖️ Huỷ sửa</button>
+      <button class="btn ghost" id="btnPrint">${ICONS.print} In / Xuất PDF</button>
+      <button class="btn ghost" id="btnCsv">${ICONS.download} Xuất CSV</button>
+      ` : `
       <button class="btn ghost" id="btnSaveDraft">${ICONS.save} Lưu</button>
       <button class="btn ${s.pct===100?"teal":"ghost"}" id="btnSubmit">${ICONS.check} Submit (Lưu chính thức)</button>
       <button class="btn ghost" id="btnPrint">${ICONS.print} In / Xuất PDF</button>
       <button class="btn ghost" id="btnCsv">${ICONS.download} Xuất CSV</button>
       <button class="btn danger" id="btnReset">${ICONS.trash} Xoá & làm phiên mới</button>
+      `}
     </div>
-    ${s.pct<100
+    ${EDITING_HISTORY_ID ? "" : (s.pct<100
       ? `<div class="hint" style="margin:10px 0 0;">Còn <b>${remaining}</b> hạng mục chưa chấm (${s.pct}%) — cần hoàn thành <b>100%</b> mới Submit được. Dùng "Lưu" để tiếp tục sau.</div>`
-      : `<div class="hint ok" style="margin:10px 0 0;">✅ Đã hoàn thành 100% — sẵn sàng Submit để lưu chính thức vào Lịch sử.</div>`}
+      : `<div class="hint ok" style="margin:10px 0 0;">✅ Đã hoàn thành 100% — sẵn sàng Submit để lưu chính thức vào Lịch sử.</div>`)}
   </div>
   `;
   root.innerHTML = html;
 
+  qs("#hPeriod").addEventListener("change", e=>{ STATE.header.period=e.target.value; saveDraft(); });
   qs("#hDateStart").addEventListener("change", e=>{ STATE.header.dateStart=e.target.value; saveDraft(); });
   qs("#hDateEnd").addEventListener("change", e=>{ STATE.header.dateEnd=e.target.value; saveDraft(); });
   qs("#hNote").addEventListener("input", e=>{ STATE.header.note=e.target.value; saveDraft(); });
@@ -1454,24 +1462,29 @@ function renderCheck(){
   bindGroupControls(root);
   bindItemCards(root);
 
-  qs("#btnSaveDraft").addEventListener("click", async ()=>{
-    /* Hiệu chỉnh: đổi "Lưu tạm" -> "Lưu" — bấm là lưu cục bộ VÀ đồng bộ NGAY vào file JSON dùng chung
-       (nếu đã kết nối thư mục đồng bộ), thay vì chỉ lưu localStorage như trước rồi phải đợi bấm riêng
-       "Đồng bộ ngay" hoặc Submit. Đây là nguyên nhân chính khiến % hoàn thành không cập nhật kịp sang
-       máy khác. Nếu chưa kết nối thư mục thì vẫn chỉ lưu cục bộ như cũ, không bắt buộc kết nối. */
-    saveDraft();
-    logAction("Lưu Checklist", `${fmtDateRangeVN(h)} · ${s.pct}% hoàn thành`, "");
-    backgroundCloudSyncIfConfigured("Lưu Checklist");
-    toast("Đã lưu ✅ (có thể tiếp tục sau)");
-  });
-  qs("#btnSubmit").addEventListener("click", submitSession);
+  if(EDITING_HISTORY_ID){
+    qs("#btnUpdateHistory").addEventListener("click", updateHistorySession);
+    qs("#btnCancelEditHistory").addEventListener("click", cancelEditHistorySession);
+  } else {
+    qs("#btnSaveDraft").addEventListener("click", async ()=>{
+      /* Hiệu chỉnh: đổi "Lưu tạm" -> "Lưu" — bấm là lưu cục bộ VÀ đồng bộ NGAY vào file JSON dùng chung
+         (nếu đã kết nối thư mục đồng bộ), thay vì chỉ lưu localStorage như trước rồi phải đợi bấm riêng
+         "Đồng bộ ngay" hoặc Submit. Đây là nguyên nhân chính khiến % hoàn thành không cập nhật kịp sang
+         máy khác. Nếu chưa kết nối thư mục thì vẫn chỉ lưu cục bộ như cũ, không bắt buộc kết nối. */
+      saveDraft();
+      logAction("Lưu Checklist", `${fmtDateRangeVN(h)} · ${s.pct}% hoàn thành`, "");
+      backgroundCloudSyncIfConfigured("Lưu Checklist");
+      toast("Đã lưu ✅ (có thể tiếp tục sau)");
+    });
+    qs("#btnSubmit").addEventListener("click", submitSession);
+    qs("#btnReset").addEventListener("click", ()=>{
+      if(confirm("Xoá toàn bộ dữ liệu đang nhập và bắt đầu phiên mới?")){
+        STATE = blankState(); saveDraft(); renderCheck(); toast("Đã tạo phiên mới");
+      }
+    });
+  }
   qs("#btnPrint").addEventListener("click", ()=>printSessions([{id:"draft", header:STATE.header, items:STATE.items, summary:computeSummary()}]));
   qs("#btnCsv").addEventListener("click", ()=>exportCsv(STATE, "draft"));
-  qs("#btnReset").addEventListener("click", ()=>{
-    if(confirm("Xoá toàn bộ dữ liệu đang nhập và bắt đầu phiên mới?")){
-      STATE = blankState(); saveDraft(); renderCheck(); toast("Đã tạo phiên mới");
-    }
-  });
 }
 
 function renderSection(title, items, sectionKey){
@@ -1713,8 +1726,11 @@ function buildPhotoFileName(it, ext, seq){
   const stagePart = safeFileName((it && it.stage) || "XX");
   return `${stagePart}_${locPart}_${ts}${seq?("-"+seq):""}.${ext}`;
 }
-/* Hiệu chỉnh: Công đoạn/Kỳ Shutdown của ảnh Checklist lấy theo Ngày bắt đầu của phiên Start-up đang nhập (STATE.header) */
+/* Hiệu chỉnh: Công đoạn/Kỳ Shutdown của ảnh Checklist ưu tiên lấy theo trường "Đợt (Tháng/Năm)" đã nhập ở
+   đầu phiên (STATE.header.period) — trước đây chỉ suy ra từ Ngày bắt đầu, có thể sai nếu phiên vắt qua
+   2 tháng hoặc người dùng cố ý gắn phiên vào 1 đợt khác với ngày chấm thực tế. */
 function activePeriodFromHeader(){
+  if(STATE.header && STATE.header.period) return STATE.header.period;
   const {start} = hDates(STATE.header);
   if(start){ const parts = start.split("-"); if(parts.length>=2 && parts[0] && parts[1]) return `${parts[0]}-${parts[1]}`; }
   return currentPeriod();
@@ -1845,6 +1861,11 @@ function submitSession(){
   /* Hiệu chỉnh: Submit chốt 1 đợt Shutdown/Start-up (1 tháng/lần) chính thức vào Lịch sử — mốc quan trọng
      nên LUÔN đẩy ngay lên Firebase. */
   backgroundCloudSyncIfConfigured("Submit phiên Checklist");
+  /* Hiệu chỉnh: sau khi Submit, tự động reset về phiên mới trống ngay (không hỏi xác nhận nữa) — Submit
+     đã chốt xong vào Lịch sử nên bảng Checklist luôn sẵn sàng bắt đầu phiên tiếp theo ngay lập tức. */
+  STATE = blankState();
+  saveDraft();
+  renderCheck();
   /* PHASE 12: Better Summary — thay confirm()/toast() bằng modal tổng kết (Inspection Completed) */
   showSummaryModal(rec);
 }
@@ -1866,12 +1887,11 @@ function showSummaryModal(rec){
   if(modal){ modal.classList.add("show"); modal.setAttribute("aria-hidden","false"); }
   else toast("✅ Đã Submit và lưu vào Lịch sử");
 }
-function closeSummaryModalAndMaybeReset(){
+function closeSummaryModal(){
+  /* Hiệu chỉnh: Checklist đã tự reset về phiên mới ngay khi Submit (xem submitSession) — hàm này giờ
+     chỉ còn nhiệm vụ đóng modal, không hỏi xác nhận/reset lại nữa. */
   const modal = qs("#summaryModal");
   if(modal){ modal.classList.remove("show"); modal.setAttribute("aria-hidden","true"); }
-  if(confirm("Bắt đầu phiên Start-up mới (xoá form hiện tại)?")){
-    STATE = blankState(); saveDraft(); renderCheck();
-  }
 }
 
 /* ===================== HISTORY ===================== */
@@ -1890,15 +1910,17 @@ function renderHistory(){
 function historyTableHtml(list, withActions){
   if(list.length===0) return `<div class="card"><div class="empty">Không có phiên nào.</div></div>`;
   let html = `<div class="card"><div style="overflow-x:auto;"><table class="histtbl"><thead><tr>
-    <th>Ngày</th><th>Hoàn thành</th><th>Đạt/Không đạt/N-A</th><th></th>
+    <th>Đợt</th><th>Ngày</th><th>Hoàn thành</th><th>Đạt/Không đạt/N-A</th><th></th>
   </tr></thead><tbody>`;
   list.slice().reverse().forEach((rec)=>{
     html += `<tr data-recid="${rec.id}">
+      <td>${esc(periodLabelVN(rec.header.period))}</td>
       <td>${fmtDateRangeVN(rec.header)}</td>
       <td><b>${rec.summary.pct}%</b></td>
       <td>${rec.summary.pass}✅ / ${rec.summary.fail}❌ / ${rec.summary.na}➖</td>
       <td><div class="histactions">
         <button class="view" data-act="view">Xem</button>
+        ${withActions ? `<button class="view" data-act="edit">✏️ Sửa</button>` : ""}
         <button class="view" data-act="load">Nạp lại</button>
         <button data-act="pdf">PDF</button>
         <button data-act="csv">CSV</button>
@@ -1917,6 +1939,7 @@ function bindHistoryTable(root, list, isHistoryView){
       btn.addEventListener("click", ()=>{
         const act = btn.dataset.act;
         if(act==="view") viewSession(rec);
+        else if(act==="edit") editHistorySession(rec);
         else if(act==="load") loadSessionToDraft(rec);
         else if(act==="pdf") printSessions([rec]);
         else if(act==="csv") exportCsv(rec, "session");
@@ -1940,6 +1963,51 @@ function loadSessionToDraft(rec){
   logAction("Nạp lại phiên vào nháp", fmtDateRangeVN(rec.header), rec.id);
   qs('.tab[data-tab="check"]').click();
   toast("Đã nạp lại phiên vào Checklist");
+}
+/* Hiệu chỉnh: cho phép chỉnh sửa trực tiếp 1 phiên đã Submit trong Lịch sử — khác với "Nạp lại" (nạp vào
+   nháp rồi Submit sẽ tạo phiên MỚI), "Sửa" cập nhật ĐÚNG bản ghi đó (cùng id) trong Lịch sử. Mượn tạm ô
+   STATE để tái dùng toàn bộ UI tab Checklist cho việc sửa; nháp đang làm dở (nếu có) được cất tạm trong
+   biến nhớ (KHÔNG ghi đè localStorage) và trả lại nguyên vẹn sau khi Cập nhật/Huỷ. */
+let EDITING_HISTORY_ID = null;
+let STASHED_DRAFT = null;
+function editHistorySession(rec){
+  if(!requirePassword("sửa phiên Lịch sử đã Submit")) return;
+  STASHED_DRAFT = STATE;
+  EDITING_HISTORY_ID = rec.id;
+  STATE = {header: Object.assign({}, rec.header), items: JSON.parse(JSON.stringify(rec.items))};
+  qs('.tab[data-tab="check"]').click();
+  toast("🖊️ Đang sửa phiên đã Submit — bấm \"Cập nhật\" để lưu, hoặc \"Huỷ sửa\" để quay lại", 3200);
+}
+function updateHistorySession(){
+  const h = STATE.header;
+  const {start,end} = hDates(h);
+  if(!start || !end){ toast("Vui lòng nhập đủ Ngày bắt đầu và Ngày kết thúc"); return; }
+  const list = getHistory();
+  const idx = list.findIndex(r=>r.id===EDITING_HISTORY_ID);
+  if(idx<0){ toast("❌ Không tìm thấy phiên để cập nhật (có thể đã bị xoá)"); return; }
+  const summary = computeSummary();
+  list[idx] = Object.assign({}, list[idx], {
+    header: Object.assign({}, h),
+    items: JSON.parse(JSON.stringify(STATE.items)),
+    summary,
+    updatedAt: Date.now()
+  });
+  setHistory(list);
+  logAction("Cập nhật phiên Lịch sử", `${fmtDateRangeVN(h)} · ${summary.pct}% hoàn thành`, EDITING_HISTORY_ID);
+  backgroundCloudSyncIfConfigured("Cập nhật phiên Lịch sử");
+  exitHistoryEditMode();
+  qs('.tab[data-tab="history"]').click();
+  toast("✅ Đã cập nhật phiên trong Lịch sử");
+}
+function cancelEditHistorySession(){
+  if(!confirm("Huỷ sửa? Các thay đổi chưa lưu sẽ mất.")) return;
+  exitHistoryEditMode();
+  qs('.tab[data-tab="history"]').click();
+}
+function exitHistoryEditMode(){
+  EDITING_HISTORY_ID = null;
+  STATE = STASHED_DRAFT || loadDraft() || blankState();
+  STASHED_DRAFT = null;
 }
 function deleteSession(id, rerenderHist){
   if(!requirePassword("xoá phiên Lịch sử đã Submit")) return;
@@ -2337,19 +2405,19 @@ function updateCloudSyncUI(overrideMsg){
   el.textContent = `✅ ${cfgTxt} ${lastTxt} "Lưu"/"Submit" ở tab Checklist sẽ tự đẩy dữ liệu lên; bấm "Tải về" khi mở app trên máy khác để nhận dữ liệu mới nhất.`;
 }
 function snapshotData(){
-  /* Hiệu chỉnh: sửa lỗi Highlight/Plan không được đồng bộ — snapshotData() nay gồm cả
-     Highlight (LS_HIGHLIGHT) và Plan (LS_CLEANPLAN), và cả danh sách ID đã xoá (deletedIds/tombstone)
+  /* Hiệu chỉnh: sửa lỗi Highlight không được đồng bộ — snapshotData() nay gồm cả
+     Highlight (LS_HIGHLIGHT), và cả danh sách ID đã xoá (deletedIds/tombstone)
      để máy khác không "hồi sinh" lại các bản ghi đã bị xoá khi đồng bộ.
      Hiệu chỉnh: sửa lỗi phiên Checklist đang chấm dở (draft, chưa Nộp/Lưu phiên) và bản chỉnh sửa
      Khu vực/Vị trí thiết bị Evidence (evidenceTree) trước đây KHÔNG được đưa vào file đồng bộ —
      nay đưa cả hai vào để mở trên máy khác vẫn thấy và có thể chấm/bổ sung tiếp. */
   return { history: getHistory(), items: ITEMS_OVERRIDE, settings: SETTINGS, logs: getLog(),
-    highlight: getHighlights(), cleanplan: getCleanPlan(), deletedIds: getDeletedIds(),
+    highlight: getHighlights(), deletedIds: getDeletedIds(),
     draft: STATE, evidenceTree: EVIDENCE_TREE_OVERRIDE, evidenceTreeUpdatedAt: EVIDENCE_TREE_UPDATED_AT,
     exportedAt: new Date().toISOString() };
 }
 function mergeRemoteData(d){
-  const ctr = {added:0, updated:0, skipped:0, logAdded:0, highlightAdded:0, highlightUpdated:0, cleanplanAdded:0, draftAdopted:false, draftMerged:0, evidenceTreeUpdated:false};
+  const ctr = {added:0, updated:0, skipped:0, logAdded:0, highlightAdded:0, highlightUpdated:0, draftAdopted:false, draftMerged:0, evidenceTreeUpdated:false, itemsUpdated:0};
 
   /* Hiệu chỉnh: sửa lỗi đồng bộ "hồi sinh" dữ liệu đã xoá. Gộp tombstone (ID đã xoá) của máy này
      và file remote TRƯỚC KHI cộng dồn dữ liệu — bất kỳ ID nào từng bị xoá ở máy nào đó sẽ không bao giờ
@@ -2359,28 +2427,31 @@ function mergeRemoteData(d){
   const localDeleted = getDeletedIds();
   const mergedDeleted = {
     history: Array.from(new Set([...(localDeleted.history||[]), ...(Array.isArray(remoteDeleted.history)?remoteDeleted.history:[])])),
-    highlight: Array.from(new Set([...(localDeleted.highlight||[]), ...(Array.isArray(remoteDeleted.highlight)?remoteDeleted.highlight:[])])),
-    cleanplan: Array.from(new Set([...(localDeleted.cleanplan||[]), ...(Array.isArray(remoteDeleted.cleanplan)?remoteDeleted.cleanplan:[])]))
+    highlight: Array.from(new Set([...(localDeleted.highlight||[]), ...(Array.isArray(remoteDeleted.highlight)?remoteDeleted.highlight:[])]))
   };
   setDeletedIds(mergedDeleted);
   if(mergedDeleted.history.length) setHistory(getHistory().filter(r=> !mergedDeleted.history.includes(r.id)));
   if(mergedDeleted.highlight.length) setHighlights(getHighlights().filter(h=> !mergedDeleted.highlight.includes(h.id)));
-  if(mergedDeleted.cleanplan.length) setCleanPlan(getCleanPlan().filter(p=> !mergedDeleted.cleanplan.includes(p.id)));
 
   if(Array.isArray(d.history)){
     const local = getHistory();
-    const localIds = new Set(local.map(r=>r.id));
+    const localById = new Map(local.map(r=>[r.id, r]));
     d.history.forEach(rec=>{
       if(!rec || !rec.id) return;
       if(mergedDeleted.history.includes(rec.id)) return; // đã bị xoá — không hồi sinh lại
-      if(!localIds.has(rec.id)){ local.push(rec); localIds.add(rec.id); ctr.added++; }
+      const loc = localById.get(rec.id);
+      if(!loc){ local.push(rec); localById.set(rec.id, rec); ctr.added++; }
+      /* Hiệu chỉnh: cho phép chỉnh sửa phiên Lịch sử đã Submit — bản ghi sửa có updatedAt mới hơn sẽ
+         ghi đè bản cục bộ (giống cách ITEMS_OVERRIDE/Highlight đã đồng bộ theo "bản mới nhất thắng"),
+         thay vì trước đây chỉ CỘNG DỒN bản ghi có ID mới nên bản sửa không bao giờ tới được máy khác. */
+      else if((rec.updatedAt||0) > (loc.updatedAt||0)){ Object.assign(loc, rec); ctr.updated++; }
       else ctr.skipped++;
     });
     local.sort((a,b)=> hDates(a.header).start.localeCompare(hDates(b.header).start));
     setHistory(local);
   }
   if(d.items && (d.items.updatedAt||0) > (ITEMS_OVERRIDE.updatedAt||0)){
-    ITEMS_OVERRIDE = d.items; localStorage.setItem(LS_ITEMS, JSON.stringify(ITEMS_OVERRIDE)); ctr.updated++;
+    ITEMS_OVERRIDE = d.items; localStorage.setItem(LS_ITEMS, JSON.stringify(ITEMS_OVERRIDE)); ctr.itemsUpdated++;
   }
   if(d.settings){
     const remoteStaff = Array.isArray(d.settings.staff) ? d.settings.staff : [];
@@ -2422,14 +2493,6 @@ function mergeRemoteData(d){
     ctr.highlightAdded = added;
     ctr.highlightUpdated = updated;
   }
-  if(Array.isArray(d.cleanplan)){
-    const local = getCleanPlan();
-    const localIds = new Set(local.map(p=>p.id));
-    let added = 0;
-    d.cleanplan.forEach(p=>{ if(p && p.id && !mergedDeleted.cleanplan.includes(p.id) && !localIds.has(p.id)){ local.push(p); localIds.add(p.id); added++; } });
-    if(added) setCleanPlan(local);
-    ctr.cleanplanAdded = added;
-  }
   /* Hiệu chỉnh: sửa lỗi phiên Checklist đang chấm dở (draft) không được đồng bộ giữa các máy.
      Nguyên tắc gộp AN TOÀN — không bao giờ làm mất dữ liệu vừa chấm trên máy hiện tại:
      - Nếu máy này CHƯA chấm gì (nháp trống) và máy kia đã có dữ liệu → nhận toàn bộ nháp máy kia,
@@ -2470,7 +2533,6 @@ function refreshOpenTabsAfterSync(){
   if(qs("#view-datalog").classList.contains("active")) renderDataLog();
   /* Hiệu chỉnh: render lại tab Highlight/Plan nếu đang mở, để thấy ngay mục mới đồng bộ từ máy khác */
   if(qs("#view-highlight").classList.contains("active")) renderHighlight();
-  if(qs("#view-cleanplan").classList.contains("active")) renderCleanPlan();
   /* Hiệu chỉnh: render lại tab Checklist/Evidence nếu đang mở, để thấy ngay phần nháp/Khu vực-Vị trí
      vừa gộp từ máy khác (sửa lỗi "lưu tạm không đồng bộ được giữa các máy"). */
   if(qs("#view-check").classList.contains("active")) renderCheck();
@@ -2478,7 +2540,7 @@ function refreshOpenTabsAfterSync(){
 }
 function syncLogNote(ctr){
   const draftNote = ctr.draftAdopted ? ", đã nhận nháp Checklist từ máy khác" : (ctr.draftMerged ? `, +${ctr.draftMerged} hạng mục nháp từ máy khác` : "");
-  return `+${ctr.added} phiên mới, cập nhật ${ctr.updated}, +${ctr.logAdded} log, +${ctr.highlightAdded||0} Highlight${ctr.highlightUpdated?` (cập nhật ${ctr.highlightUpdated})`:""}, +${ctr.cleanplanAdded||0} Plan${draftNote}${ctr.evidenceTreeUpdated ? ", cập nhật Khu vực/Vị trí Evidence" : ""}`;
+  return `+${ctr.added} phiên mới, cập nhật ${ctr.updated}, +${ctr.logAdded} log, +${ctr.highlightAdded||0} Highlight${ctr.highlightUpdated?` (cập nhật ${ctr.highlightUpdated})`:""}${draftNote}${ctr.evidenceTreeUpdated ? ", cập nhật Khu vực/Vị trí Evidence" : ""}`;
 }
 
 /* ===================== BACKUP / RESTORE JSON (manual) ===================== */
@@ -2506,16 +2568,11 @@ async function restoreJson(file){
       local.sort((a,b)=>(a.ts||0)-(b.ts||0));
       setLog(local);
     }
-    /* Hiệu chỉnh: phục hồi JSON thủ công cũng phải gộp Highlight/Plan — cùng lỗi thiếu như đồng bộ OneDrive */
+    /* Hiệu chỉnh: phục hồi JSON thủ công cũng phải gộp Highlight — cùng lỗi thiếu như đồng bộ OneDrive */
     if(Array.isArray(data.highlight)){
       const local = getHighlights(); const ids = new Set(local.map(h=>h.id));
       data.highlight.forEach(h=>{ if(h && h.id && !ids.has(h.id)){ local.push(h); ids.add(h.id); } });
       setHighlights(local);
-    }
-    if(Array.isArray(data.cleanplan)){
-      const local = getCleanPlan(); const ids = new Set(local.map(p=>p.id));
-      data.cleanplan.forEach(p=>{ if(p && p.id && !ids.has(p.id)){ local.push(p); ids.add(p.id); } });
-      setCleanPlan(local);
     }
     /* Hiệu chỉnh: phục hồi luôn danh sách ID đã xoá (tombstone) từ file sao lưu, để trạng thái xoá nhất quán
        với thời điểm sao lưu thay vì giữ tombstone hiện tại của máy này. */
@@ -2678,13 +2735,12 @@ function renderGuide(){
     <p>Mỗi hạng mục gồm: <b>Công đoạn</b> (Khu vực: WH, TIP, ROA, EXT, EVAP, FD, FP, RW), <b>Vị trí cụ thể</b> (tuỳ chọn), <b>Chủ đề kiểm tra</b> (Cleaning / FB / Hygiene Permit — hiển thị như nhãn phụ), <b>Nội dung kiểm tra</b>, <b>Mô tả</b> và <b>Mức ưu tiên</b>. Checklist áp dụng chung cho mọi phiên Start-up, không còn phân biệt theo Dòng sản phẩm.</p>
     <h4>3. Các tab chính</h4>
     <ul>
-      <li><b>Checklist</b> — nhập liệu cho phiên Start-up hiện tại (chỉ còn Ngày bắt đầu/Ngày kết thúc/Ghi chú chung — không còn Dòng sản phẩm/Batch/QA phụ trách ở đầu đề mục; mỗi hạng mục đã có ô "Người thực hiện" riêng là đủ). Hạng mục nhóm theo <b>Công đoạn</b>, mỗi hạng mục gói gọn trong 1 hàng ngang: Nội dung kiểm tra và Mô tả hiển thị cân đối cạnh nhau, chữ đậm/màu tương phản cao dễ quan sát (Mô tả luôn hiện, không cần bấm "Xem thêm"); nút Đạt/Không đạt/N-A gộp thành 1 khối icon thu nhỏ bên phải, nút Thêm ảnh chỉ còn icon. Khối "Tiến độ theo Công đoạn" ở trên chỉ còn hàng bấm-để-nhảy-nhanh, mỗi Công đoạn hiện % + màu theo tỉ lệ hoàn thành ngay tại tên (đã bỏ các thanh progress bar ngang bên dưới cho gọn). Có thể <b>lọc chỉ xem 1 Công đoạn</b>, <b>thu gọn/mở rộng theo từng Công đoạn</b> (badge x/y cho biết tiến độ), <b>ẩn bớt những DÒNG đã tick Đạt</b> (chỉ còn hiện dòng Chưa chấm/Không đạt/N-A để đỡ rối mắt — badge x/y và nút "Đạt hết Công đoạn" vẫn tính trên toàn bộ, không bị ảnh hưởng), và dùng nút <b>"Đạt hết Công đoạn"</b> ở đầu mỗi nhóm để đánh dấu nhanh cả nhóm rồi chỉnh lại từng mục Không đạt/N-A sau. Dùng <b>"Lưu"</b> để lưu dở dang bất cứ lúc nào — bấm là lưu cục bộ VÀ đồng bộ ngay vào file dùng chung nếu đã kết nối thư mục (tab Đồng bộ); <b>"Submit"</b> chỉ thực hiện được và lưu chính thức vào Lịch sử thành 1 đợt Shutdown/Start-up khi đã hoàn thành 100%, và cũng luôn tự đồng bộ ngay khi Submit. Trong khối Dashboard tiến độ có 2 nút <b>"Xuất báo cáo Tiến độ"</b> (Ảnh PNG / PDF) — gộp 1 báo cáo gọn, có màu sắc gồm: Dashboard + Tiến độ theo Công đoạn (Checklist), danh sách Highlight chưa/đã hoàn thành trong cùng đợt, và % tiến độ nhập ảnh theo Khu vực (Evidence) của đúng đợt đó (đợt = Tháng/Năm theo Ngày bắt đầu của phiên đang nhập). Ảnh PNG tải về trực tiếp; PDF mở qua hộp thoại In của trình duyệt, chọn máy in "Save as PDF"/"Lưu dưới dạng PDF" để lưu file.</li>
+      <li><b>Checklist</b> — nhập liệu cho phiên Start-up hiện tại (đầu đề mục gồm <b>Đợt (Tháng/Năm)</b>, Ngày bắt đầu/Ngày kết thúc/Ghi chú chung — không còn Dòng sản phẩm/Batch/QA phụ trách; mỗi hạng mục đã có ô "Người thực hiện" riêng là đủ). Hạng mục nhóm theo <b>Công đoạn</b>, mỗi hạng mục gói gọn trong 1 hàng ngang: Nội dung kiểm tra và Mô tả hiển thị cân đối cạnh nhau, chữ đậm/màu tương phản cao dễ quan sát (Mô tả luôn hiện, không cần bấm "Xem thêm"); nút Đạt/Không đạt/N-A gộp thành 1 khối icon thu nhỏ bên phải, nút Thêm ảnh chỉ còn icon. Khối "Tiến độ theo Công đoạn" ở trên chỉ còn hàng bấm-để-nhảy-nhanh, mỗi Công đoạn hiện % + màu theo tỉ lệ hoàn thành ngay tại tên (đã bỏ các thanh progress bar ngang bên dưới cho gọn). Có thể <b>lọc chỉ xem 1 Công đoạn</b>, <b>thu gọn/mở rộng theo từng Công đoạn</b> (badge x/y cho biết tiến độ), <b>ẩn bớt những DÒNG đã tick Đạt</b> (chỉ còn hiện dòng Chưa chấm/Không đạt/N-A để đỡ rối mắt — badge x/y và nút "Đạt hết Công đoạn" vẫn tính trên toàn bộ, không bị ảnh hưởng), và dùng nút <b>"Đạt hết Công đoạn"</b> ở đầu mỗi nhóm để đánh dấu nhanh cả nhóm rồi chỉnh lại từng mục Không đạt/N-A sau. Dùng <b>"Lưu"</b> để lưu dở dang bất cứ lúc nào — bấm là lưu cục bộ VÀ tự đẩy ngay lên Firebase (tab Đồng bộ); <b>"Submit"</b> chỉ thực hiện được và lưu chính thức vào Lịch sử thành 1 đợt Shutdown/Start-up khi đã hoàn thành 100%, cũng luôn tự đẩy lên Firebase ngay, và <b>bảng Checklist sẽ tự reset về phiên mới trống</b> ngay sau khi Submit để bắt đầu phiên tiếp theo. Trong khối Dashboard tiến độ có 2 nút <b>"Xuất báo cáo Tiến độ"</b> (Ảnh PNG / PDF) — gộp 1 báo cáo gọn, có màu sắc gồm: Dashboard + Tiến độ theo Công đoạn (Checklist), danh sách Highlight chưa/đã hoàn thành trong cùng đợt, và % tiến độ nhập ảnh theo Khu vực (Evidence) của đúng đợt đó (theo trường <b>Đợt (Tháng/Năm)</b> đã nhập ở đầu phiên). Ảnh PNG tải về trực tiếp; PDF mở qua hộp thoại In của trình duyệt, chọn máy in "Save as PDF"/"Lưu dưới dạng PDF" để lưu file.</li>
       <li><b>Ảnh bằng chứng</b> — bấm icon máy ảnh để chọn file, hoặc bấm vào bất kỳ ô nào trong thẻ hạng mục rồi <b>dán ảnh bằng Ctrl+V</b> (copy/paste từ clipboard, ví dụ ảnh vừa chụp màn hình hoặc copy từ ứng dụng khác). Ảnh được tự động đặt tên theo <b>Công đoạn_Vị trí thẩm tra_Ngày-giờ thẩm tra</b> để tra đúng vị trí lưu ảnh theo từng chu kỳ kiểm tra.</li>
-      <li><b>Highlight</b> — todolist ghi chú nhanh các lưu ý cần đặc biệt chú trọng trong 1 đợt Shutdown/Start-up cụ thể (gắn theo Tháng/Năm), có <b>Due date</b>, <b>Mức ưu tiên</b>, <b>PIC</b> (tuỳ chọn). Màn hình mặc định chỉ hiện <b>Danh sách Highlight</b> cho gọn — bấm nút <b>"➕ Thêm Highlight"</b> để mở hộp thoại thêm mới, trong đó có cả 2 cách: nhập tay 1 mục (Đợt, Due date, Nội dung, Mức ưu tiên, PIC) hoặc tải <b>file mẫu (Template)</b>/<b>nhập nhanh từ file CSV/Excel</b> (file Excel cần Save As CSV trước) để thêm nhiều dòng cùng lúc. <b>Nội dung và PIC có thể sửa trực tiếp</b> ngay trên từng dòng trong Danh sách (gõ xong bấm ra ngoài để lưu). Khi tick <b>Hoàn thành</b>, app mở hộp thoại yêu cầu confirm/đổi <b>PIC</b>, cho phép nhập thêm <b>ghi chú hoàn thành</b> và đính kèm <b>ảnh bằng chứng</b> (tuỳ chọn — chọn file hoặc dán Ctrl+V ngay trong hộp thoại); ảnh được lưu vào thư mục con <b>Evidencehighlight</b> ngay trong đúng "Shutdown Tháng-Năm" của Highlight đó (dùng chung "Thư mục lưu ảnh bằng chứng" ở tab Cài đặt — nếu chưa kết nối thư mục, ảnh sẽ được nén nhỏ và lưu trực tiếp trong dữ liệu). Ghi chú/ảnh hiển thị ngay dưới dòng Highlight đã hoàn thành, bấm vào ảnh để xem full màn hình/xoá. Mọi thao tác (thêm, sửa, Hoàn thành, xoá) đều tự động đồng bộ ngay nếu đã kết nối thư mục dùng chung.</li>
-      <li><b>Plan</b> — Kế hoạch Cleaning Shutdown – Start-up: nhập thủ công từng mốc thời gian (Ngày, Từ giờ–Đến giờ, Khu vực, Nội dung công việc, Ghi chú), lọc theo khoảng ngày, xuất CSV; cũng có nút tải <b>file mẫu (Template)</b> và <b>nhập nhanh từ file CSV/Excel</b>.</li>
+      <li><b>Highlight</b> — todolist ghi chú nhanh các lưu ý cần đặc biệt chú trọng trong 1 đợt Shutdown/Start-up cụ thể (gắn theo Tháng/Năm), có <b>Due date</b>, <b>Mức ưu tiên</b>, <b>PIC</b> (tuỳ chọn). Màn hình mặc định chỉ hiện <b>Danh sách Highlight</b> cho gọn — bấm nút <b>"➕ Thêm Highlight"</b> để mở hộp thoại thêm mới, trong đó có cả 2 cách: nhập tay 1 mục (Đợt, Due date, Nội dung, Mức ưu tiên, PIC) hoặc tải <b>file mẫu (Template)</b>/<b>nhập nhanh từ file CSV/Excel</b> (file Excel cần Save As CSV trước) để thêm nhiều dòng cùng lúc. <b>Nội dung và PIC có thể sửa trực tiếp</b> ngay trên từng dòng trong Danh sách (gõ xong bấm ra ngoài để lưu). Khi tick <b>Hoàn thành</b>, app mở hộp thoại yêu cầu confirm/đổi <b>PIC</b>, cho phép nhập thêm <b>ghi chú hoàn thành</b> và đính kèm <b>ảnh bằng chứng</b> (tuỳ chọn — chọn file hoặc dán Ctrl+V ngay trong hộp thoại); ảnh được lưu vào thư mục con <b>Evidencehighlight</b> ngay trong đúng "Shutdown Tháng-Năm" của Highlight đó (dùng chung "Thư mục lưu ảnh bằng chứng" ở tab Cài đặt — nếu chưa kết nối thư mục, ảnh sẽ được nén nhỏ và lưu trực tiếp trong dữ liệu). Ghi chú/ảnh hiển thị ngay dưới dòng Highlight đã hoàn thành, bấm vào ảnh để xem full màn hình/xoá. Mọi thao tác (thêm, sửa, Hoàn thành, xoá) đều tự động đẩy lên Firebase ngay.</li>
       <li><b>Evidence (Cleaning Evidence)</b> — lưu ảnh bằng chứng vệ sinh theo đúng vị trí thiết bị: (1) Chọn thư mục lưu ảnh, (2) chọn Khu vực + Vị trí thiết bị theo cây thư mục mặc định (ROASTING/EXTRACTION/EVAPORATION/FREEZE DRY/FILLING & PACKING/REWORK — có thể Thêm/Sửa/Xoá qua "Cài đặt Khu vực"/"Cài đặt Vị trí thiết bị" bên dưới), (3) Copy/Paste (Ctrl+V) hoặc chọn ảnh để lưu. Ảnh tự động đổi tên theo Vị trí + Ngày + Thứ tự, lưu vào thư mục con <b>Shutdown Tháng-Năm / Khu vực / Vị trí thiết bị</b>. Sau khi lưu, mục <b>"Ảnh đã lưu tại vị trí này"</b> hiện ngay các ảnh trong đúng thư mục đó (bấm vào ảnh để xem full màn hình/xoá, có nút "Làm mới danh sách ảnh"). Đầu tab có khối <b>"Tiến độ nhập ảnh theo Khu vực"</b> — mỗi Khu vực hiện % = số Vị trí đã có ảnh/tổng số Vị trí của khu vực đó (giống cách tính % mỗi Công đoạn bên Checklist), kèm % tổng thể; bấm vào 1 Khu vực để nhảy nhanh tới khu vực đó. Có mục <b>"Cài đặt Khu vực"</b> (sửa tên/thêm/xoá cả Khu vực) và <b>"Cài đặt Vị trí thiết bị"</b> (sửa tên/thêm mới Vị trí thiết bị cho Khu vực đang chọn, khôi phục về mặc định gốc khi cần) — không ảnh hưởng các ảnh đã lưu trước đó. Trong mục "Cài đặt Khu vực" có nút <b>"Xuất Excel (Khu vực &amp; Vị trí)"</b> — tải file <code>.xlsx</code> thật (2 cột: Khu vực, Vị trí thiết bị) đúng thứ tự đang hiển thị trên app, tiện chỉnh sửa/sắp xếp lại hàng loạt trong Excel; và <b>"Nhập từ Excel"</b> — chọn lại file <code>.xlsx</code> đó (đã sửa xong) để nạp lại, THAY THẾ toàn bộ cây Khu vực/Vị trí hiện tại theo đúng thứ tự các dòng trong file (có xác nhận trước khi áp dụng, không xoá ảnh đã lưu). <b>Thư mục lưu ảnh dùng CHUNG với "Thư mục lưu ảnh bằng chứng"</b> ở tab Cài đặt: ảnh Checklist tự động lưu vào thư mục con <code>Checklistevidence</code> ngay trong cùng "Shutdown Tháng-Năm".</li>
       <li><b>Chỉnh sửa</b> — thêm/sửa/xoá hạng mục trong danh mục Checklist, nhóm theo Công đoạn cho gọn. <b>Yêu cầu mật khẩu ngay khi vào tab</b> (vào rồi thì Lưu/Xoá bên trong không hỏi lại).</li>
-      <li><b>Lịch sử</b> — xem lại các phiên đã Submit, nạp lại để chỉnh sửa tiếp, xuất CSV/PDF từng phiên. <b>Yêu cầu mật khẩu</b> khi xoá 1 phiên đã Submit khỏi Lịch sử.</li>
+      <li><b>Lịch sử</b> — xem lại các phiên đã Submit, xuất CSV/PDF từng phiên. Nút <b>"✏️ Sửa"</b> cho sửa trực tiếp phiên đó (ngày, Đợt, ghi chú, từng hạng mục) rồi bấm <b>"💾 Cập nhật"</b> để ghi đè đúng bản ghi đó trong Lịch sử (khác với <b>"Nạp lại"</b> — nạp vào Checklist rồi Submit sẽ tạo 1 phiên MỚI thay vì sửa phiên cũ). <b>Yêu cầu mật khẩu</b> khi Sửa hoặc khi Xoá 1 phiên đã Submit khỏi Lịch sử.</li>
       <li><b>Truy xuất</b> — lọc hồ sơ theo khoảng ngày/trạng thái, chọn nhiều phiên để xuất 1 báo cáo PDF gộp.</li>
       <li><b>Đồng bộ</b> — dữ liệu đồng bộ qua Internet bằng <b>Firebase Cloud</b> (đã cấu hình sẵn, dùng ngay không cần thiết lập gì) giữa nhiều máy/điện thoại; hoặc sao lưu/phục hồi JSON thủ công (ngoại tuyến). Hoàn toàn tự động: đăng nhập xong tự tải dữ liệu mới nhất về, nút <b>"Lưu"</b> và <b>"Submit"</b> ở tab Checklist tự đẩy dữ liệu lên ngay khi bấm — không cần thao tác gì thêm. 2 nút "Đẩy lên"/"Tải về" chỉ để đồng bộ lại thủ công khi cần. Trạng thái hiện rõ <b>thời điểm đồng bộ lần cuối</b>.</li>
       <li><b>Data Log</b> — nhật ký mọi thay đổi dữ liệu để truy vết khi cần, kèm <b>ID máy tính</b> đã thực hiện thao tác.</li>
@@ -3164,149 +3220,6 @@ function renderHighlight(){
       const [id, idx] = btn.dataset.hldelphoto.split("|");
       removeHighlightPhoto(id, parseInt(idx,10));
     });
-  });
-}
-
-/* ===================== TAB: PLAN — KẾ HOẠCH CLEANING SHUTDOWN - START-UP (timeline nhập thủ công) =====================
-   Hiệu chỉnh: cho phép nhập thủ công từng mốc thời gian trong kế hoạch vệ sinh Shutdown/Start-up (đổi tên tab hiển thị thành "Plan").
-   VD: Ngày 31/7/2026, từ 13:00 đến 15:00, khu vực EXT, "Tháo cell chiết". Lưu độc lập (LS_CLEANPLAN). */
-let CLEANPLAN_FILTER = {from:"", to:""};
-function getCleanPlan(){ try{ return JSON.parse(localStorage.getItem(LS_CLEANPLAN) || "[]"); }catch(e){ return []; } }
-function setCleanPlan(list){ localStorage.setItem(LS_CLEANPLAN, JSON.stringify(list)); }
-function cleanPlanTemplateCsv(){
-  const rows = [
-    ["# Huong dan: 1 dong = 1 moc thoi gian. Ngay theo dinh dang YYYY-MM-DD. Gio theo dinh dang HH:MM (24h). Khu vuc va Noi dung cong viec la bat buoc."],
-    ["Ngay (YYYY-MM-DD)","Tu gio (HH:MM)","Den gio (HH:MM)","Khu vuc","Noi dung cong viec","Ghi chu"],
-    ["2026-07-31","13:00","15:00","EXT","Thao cell chiet",""]
-  ];
-  return rows.map(r=> r.map(csvEscape).join(",")).join("\r\n");
-}
-function importCleanPlanCsv(text){
-  const objs = csvRowsToObjects(parseCsvSimple(text));
-  const list = getCleanPlan();
-  let ok=0, skip=0;
-  objs.forEach(o=>{
-    const date = csvFieldByAlias(o, ["ngay","ngay (yyyy-mm-dd)","date"]).trim();
-    const timeFrom = csvFieldByAlias(o, ["tu gio","tu gio (hh:mm)","time from","gio bat dau"]).trim();
-    const timeTo = csvFieldByAlias(o, ["den gio","den gio (hh:mm)","time to","gio ket thuc"]).trim();
-    const area = csvFieldByAlias(o, ["khu vuc","area"]).trim();
-    const task = csvFieldByAlias(o, ["noi dung cong viec","task","cong viec"]).trim();
-    const note = csvFieldByAlias(o, ["ghi chu","note"]).trim();
-    if(!date || !timeFrom || !timeTo || !task){ skip++; return; }
-    list.push({id:genId("CP"), date, timeFrom, timeTo, area, task, note, createdAt: Date.now()});
-    ok++;
-  });
-  setCleanPlan(list);
-  logAction("Nhập Plan từ file", `+${ok} dòng (bỏ qua ${skip})`, "");
-  renderCleanPlan();
-  toast(`Đã nhập ${ok} mốc thời gian từ file${skip? `, bỏ qua ${skip} dòng thiếu dữ liệu`:""}`);
-}
-
-function renderCleanPlan(){
-  const root = qs("#view-cleanplan");
-  const all = getCleanPlan();
-  const filtered = all.filter(p=>{
-    if(CLEANPLAN_FILTER.from && p.date < CLEANPLAN_FILTER.from) return false;
-    if(CLEANPLAN_FILTER.to && p.date > CLEANPLAN_FILTER.to) return false;
-    return true;
-  }).slice().sort((a,b)=> (a.date+"_"+a.timeFrom).localeCompare(b.date+"_"+b.timeFrom));
-
-  root.innerHTML = `
-  <div class="card">
-    <div class="section-title">Plan — Kế hoạch Cleaning Shutdown – Start-up</div>
-    <div class="sub">Nhập thủ công từng mốc thời gian trong kế hoạch vệ sinh Shutdown/Start-up. VD: Ngày 31/07/2026, từ 13:00 đến 15:00, khu vực EXT, "Tháo cell chiết".</div>
-    <div class="grid g3">
-      <label class="fld"><span class="lab">Ngày</span><input class="inp" type="date" id="cpDate" value="${esc(todayISO())}"></label>
-      <label class="fld"><span class="lab">Từ giờ</span><input class="inp" type="time" id="cpFrom" value="13:00"></label>
-      <label class="fld"><span class="lab">Đến giờ</span><input class="inp" type="time" id="cpTo" value="15:00"></label>
-    </div>
-    <div class="grid g2" style="margin-top:10px;">
-      <label class="fld"><span class="lab">Khu vực</span>
-        <input class="inp" id="cpArea" list="cpAreaList" placeholder="VD: EXT">
-        <datalist id="cpAreaList">${STAGE_CODES.map(c=>`<option value="${esc(c)}">`).join("")}</datalist>
-      </label>
-      <label class="fld"><span class="lab">Nội dung công việc</span><input class="inp" id="cpTask" placeholder="VD: Tháo cell chiết"></label>
-    </div>
-    <label class="fld" style="margin-top:10px;"><span class="lab">Ghi chú (tuỳ chọn)</span><input class="inp" id="cpNote" placeholder="Ghi chú thêm..."></label>
-    <div class="btnrow" style="margin-top:10px;"><button class="btn teal" id="btnAddCleanPlan">➕ Thêm mốc thời gian</button></div>
-    <div class="importrow">
-      <button class="btn ghost sm" id="btnCpTemplate">${ICONS.download} Tải file mẫu (Template)</button>
-      <label class="btn ghost sm" style="width:auto;">${ICONS.save} Nhập từ file Excel/CSV<input type="file" accept=".csv,.txt,text/csv" id="cpImportFile"></label>
-    </div>
-    <div class="sub" style="margin:6px 0 0;">Lưu ý: chọn file <b>.csv</b> (nếu có file Excel, dùng File → Save As → CSV trong Excel trước khi nhập). Bấm "Tải file mẫu" để có đúng cột và hướng dẫn.</div>
-  </div>
-  <div class="card">
-    <div class="card-h"><span>Lọc theo ngày</span><span class="rule"></span></div>
-    <div class="grid g3">
-      <label class="fld"><span class="lab">Từ ngày</span><input class="inp" type="date" id="cpFilterFrom" value="${esc(CLEANPLAN_FILTER.from)}"></label>
-      <label class="fld"><span class="lab">Đến ngày</span><input class="inp" type="date" id="cpFilterTo" value="${esc(CLEANPLAN_FILTER.to)}"></label>
-      <div class="fld" style="align-self:end;"><button class="btn ghost sm" id="btnCpClearFilter">Xoá bộ lọc</button></div>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-h"><span>${filtered.length} mốc thời gian</span><span class="rule"></span></div>
-    <div style="overflow-x:auto;"><table class="histtbl"><thead><tr><th>Ngày</th><th>Thời gian</th><th>Khu vực</th><th>Nội dung công việc</th><th>Ghi chú</th><th></th></tr></thead><tbody>
-    ${filtered.length ? filtered.map(p=>`
-      <tr data-id="${esc(p.id)}">
-        <td>${esc(fmtDateVN(p.date))}</td>
-        <td>${esc(p.timeFrom)}–${esc(p.timeTo)}</td>
-        <td>${p.area? `<span class="item-area">${ICONS.pin}${esc(p.area)}</span>` : "—"}</td>
-        <td><b>${esc(p.task)}</b></td>
-        <td>${esc(p.note||"—")}</td>
-        <td><button class="hldel" data-delcp="${esc(p.id)}" title="Xoá">${ICONS.x}</button></td>
-      </tr>`).join("") : `<tr><td colspan="6" class="empty">Chưa có mốc thời gian nào${(CLEANPLAN_FILTER.from||CLEANPLAN_FILTER.to)?" khớp bộ lọc":""}.</td></tr>`}
-    </tbody></table></div>
-    ${filtered.length ? `<div class="btnrow" style="margin-top:10px;"><button class="btn ghost sm" id="btnCpCsv">${ICONS.download} Xuất CSV</button></div>` : ""}
-  </div>`;
-
-  qs("#btnAddCleanPlan").addEventListener("click", ()=>{
-    const date = qs("#cpDate").value;
-    const timeFrom = qs("#cpFrom").value;
-    const timeTo = qs("#cpTo").value;
-    const area = qs("#cpArea").value.trim();
-    const task = qs("#cpTask").value.trim();
-    const note = qs("#cpNote").value.trim();
-    if(!date || !timeFrom || !timeTo || !task){ toast("Cần nhập Ngày, Từ giờ, Đến giờ và Nội dung công việc"); return; }
-    const list = getCleanPlan();
-    list.push({id:genId("CP"), date, timeFrom, timeTo, area, task, note, createdAt: Date.now()});
-    setCleanPlan(list);
-    logAction("Thêm kế hoạch Cleaning", `${fmtDateVN(date)} ${timeFrom}-${timeTo} · ${area} · ${task}`, "");
-    renderCleanPlan();
-    toast("Đã thêm vào kế hoạch");
-  });
-  qs("#btnCpTemplate").addEventListener("click", ()=>{
-    downloadTextFile(`Plan_Cleaning_Template.csv`, cleanPlanTemplateCsv());
-    toast("Đã tải file mẫu (template)");
-  });
-  qs("#cpImportFile").addEventListener("change", async e=>{
-    const file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if(!file) return;
-    if(isExcelBinaryFile(file)){ toast('File Excel (.xlsx/.xls) cần lưu dạng "CSV" trước khi nhập (File → Save As → CSV trong Excel).', 3600); return; }
-    try{ const text = await readFileAsText(file); importCleanPlanCsv(text); }
-    catch(err){ toast("Không đọc được file: "+err.message); }
-  });
-  qs("#cpFilterFrom").addEventListener("change", e=>{ CLEANPLAN_FILTER.from = e.target.value; renderCleanPlan(); });
-  qs("#cpFilterTo").addEventListener("change", e=>{ CLEANPLAN_FILTER.to = e.target.value; renderCleanPlan(); });
-  qs("#btnCpClearFilter").addEventListener("click", ()=>{ CLEANPLAN_FILTER={from:"",to:""}; renderCleanPlan(); });
-  qsa("[data-delcp]", root).forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      const id = btn.dataset.delcp;
-      if(!confirm("Xoá mốc thời gian này khỏi kế hoạch?")) return;
-      setCleanPlan(getCleanPlan().filter(x=>x.id!==id));
-      markDeleted("cleanplan", id); // Hiệu chỉnh: tombstone để không bị đồng bộ hồi sinh lại
-      logAction("Xoá kế hoạch Cleaning", id, "");
-      renderCleanPlan();
-      toast("Đã xoá");
-    });
-  });
-  const cpCsvBtn = qs("#btnCpCsv");
-  if(cpCsvBtn) cpCsvBtn.addEventListener("click", ()=>{
-    const rows = [["Ngay","Tu gio","Den gio","Khu vuc","Noi dung cong viec","Ghi chu"]];
-    filtered.forEach(p=> rows.push([fmtDateVN(p.date), p.timeFrom, p.timeTo, p.area||"", p.task, p.note||""]));
-    const csv = rows.map(r=> r.map(csvEscape).join(",")).join("\r\n");
-    downloadTextFile(`KeHoach_Cleaning_${todayISO()}.csv`, csv);
-    toast("Đã xuất CSV");
   });
 }
 
@@ -3907,7 +3820,6 @@ function switchTab(name){
   const fw = qs("#fabWrap"); if(fw) fw.style.display = (name==="check") ? "" : "none";
   if(name==="check") renderCheck();
   if(name==="highlight") renderHighlight();
-  if(name==="cleanplan") renderCleanPlan();
   if(name==="evidence") renderCleaningEvidence();
   if(name==="edit") renderEdit();
   if(name==="history") renderHistory();
@@ -3991,7 +3903,7 @@ qsa(".tab").forEach(t=> t.addEventListener("click", ()=> switchTab(t.dataset.tab
   const summaryCsv = qs("#summaryCsv");
   if(summaryCsv) summaryCsv.addEventListener("click", ()=>{ if(LAST_SUBMITTED) exportCsv(LAST_SUBMITTED, "session"); });
   const summaryClose = qs("#summaryClose");
-  if(summaryClose) summaryClose.addEventListener("click", closeSummaryModalAndMaybeReset);
+  if(summaryClose) summaryClose.addEventListener("click", closeSummaryModal);
 
   /* Hiệu chỉnh: modal "Xác nhận hoàn thành Highlight" — nút Xác nhận/Huỷ, chọn ảnh, đóng khi bấm ra ngoài/Esc */
   const hlDoneConfirm = qs("#hlDoneConfirm");
@@ -4022,7 +3934,7 @@ renderCheck();
 function maybeAutoPullFirebase(reasonLabel){
   if(!firebaseConfigured()) return;
   pullFromFirebaseCloud().then(r=>{
-    if(r.ok && (r.ctr.added || r.ctr.updated || r.ctr.logAdded || r.ctr.highlightAdded || r.ctr.highlightUpdated || r.ctr.cleanplanAdded || r.ctr.draftAdopted || r.ctr.draftMerged || r.ctr.evidenceTreeUpdated)){
+    if(r.ok && (r.ctr.added || r.ctr.updated || r.ctr.logAdded || r.ctr.highlightAdded || r.ctr.highlightUpdated || r.ctr.draftAdopted || r.ctr.draftMerged || r.ctr.evidenceTreeUpdated)){
       logAction("Đồng bộ Cloud (Firebase)" + (reasonLabel ? ` (${reasonLabel})` : ""), syncLogNote(r.ctr), "");
     }
   }).catch(()=>{});
