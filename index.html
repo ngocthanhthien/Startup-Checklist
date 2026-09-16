@@ -887,9 +887,19 @@ function getFirestoreDb(){
     return;
   }
   const auth = firebase.auth(app);
+  let autoPulled = false;
   auth.onAuthStateChanged(function(user){
     gate.style.display = user ? "none" : "flex";
-    if(!user) setTimeout(()=> userEl.focus(), 50);
+    if(!user){ setTimeout(()=> userEl.focus(), 50); return; }
+    /* Hiệu chỉnh: tự tải dữ liệu mới nhất từ Firebase ngay khi đăng nhập xong — không còn phải nhớ bấm
+       "Tải về từ Firebase" mỗi lần mở app trên máy khác. Chỉ chạy 1 lần/lần tải trang (onAuthStateChanged
+       có thể bắn lại nếu tab bị treo/khôi phục — tránh tải trùng). "Đẩy lên" vẫn tự động sẵn ở nút
+       "Lưu"/"Submit" như trước, không đổi. */
+    if(autoPulled) return;
+    autoPulled = true;
+    pullFromFirebaseCloud().then(function(r){
+      if(r.ok) logAction("Đồng bộ Cloud (Firebase)", "Tự động tải về khi đăng nhập — " + syncLogNote(r.ctr), "");
+    }).catch(function(){});
   });
   form.addEventListener("submit", function(e){
     e.preventDefault();
@@ -2276,7 +2286,7 @@ function renderSync(){
   <div class="hint info">📁 Thư mục lưu ảnh bằng chứng nay được cấu hình tại tab <b>Cài đặt</b>.</div>
   <div class="card">
     <div class="card-h"><span>☁️ Đồng bộ Cloud (Firebase)</span><span class="rule"></span></div>
-    <div class="sub">Đồng bộ qua Internet (không cần OneDrive/Google Drive, hoạt động trên mọi trình duyệt kể cả điện thoại) — đã cấu hình sẵn, dùng ngay không cần thiết lập gì thêm. Không đồng bộ ảnh bằng chứng lên Firebase.</div>
+    <div class="sub">Đồng bộ qua Internet (không cần OneDrive/Google Drive, hoạt động trên mọi trình duyệt kể cả điện thoại) — đã cấu hình sẵn, dùng ngay không cần thiết lập gì thêm. <b>Hoàn toàn tự động</b>: đăng nhập xong tự tải dữ liệu mới nhất về, "Lưu"/"Submit" tự đẩy lên — không cần bấm nút nào ở đây. 2 nút bên dưới chỉ để đồng bộ lại thủ công khi cần (vd nghi ngờ dữ liệu chưa mới nhất). Không đồng bộ ảnh bằng chứng lên Firebase.</div>
     <details style="margin:6px 0 0;">
       <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--muted);">⚙️ Nâng cao: dùng project Firebase khác (tuỳ chọn)</summary>
       <label class="fld" style="margin-top:8px;"><span class="lab">firebaseConfig (dạng JSON) — để trống để dùng cấu hình mặc định</span><textarea class="inp" id="firebaseCfgInput" rows="4" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...", ...}'>${esc(FIREBASE_CFG.configJson||"")}</textarea></label>
