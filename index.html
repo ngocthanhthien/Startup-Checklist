@@ -289,7 +289,7 @@ table.histtbl td{padding:9px 8px;border-bottom:1px dashed var(--line);vertical-a
 table.histtbl tr:last-child td{border-bottom:none;}
 .histactions{display:flex;gap:6px;flex-wrap:wrap;}
 .histactions button{font-size:11px;font-weight:700;padding:6px 9px;border-radius:8px;border:1.5px solid var(--line2);background:#fff;}
-.histactions button.view{color:var(--teal-d);border-color:var(--teal);}
+.histactions button.viewbtn{color:var(--teal-d);border-color:var(--teal);}
 .histactions button.del{color:var(--fail);border-color:var(--fail-br);}
 
 .markd h4{font-size:14.5px;margin:16px 0 6px;}
@@ -1919,9 +1919,9 @@ function historyTableHtml(list, withActions){
       <td><b>${rec.summary.pct}%</b></td>
       <td>${rec.summary.pass}✅ / ${rec.summary.fail}❌ / ${rec.summary.na}➖</td>
       <td><div class="histactions">
-        <button class="view" data-act="view">Xem</button>
-        ${withActions ? `<button class="view" data-act="edit">✏️ Sửa</button>` : ""}
-        <button class="view" data-act="load">Nạp lại</button>
+        <button class="viewbtn" data-act="view">Xem</button>
+        ${withActions ? `<button class="viewbtn" data-act="edit">✏️ Sửa</button>` : ""}
+        <button class="viewbtn" data-act="load">Nạp lại</button>
         <button data-act="pdf">PDF</button>
         <button data-act="csv">CSV</button>
         ${withActions ? `<button class="del" data-act="del">Xoá</button>` : ""}
@@ -2295,8 +2295,8 @@ function retrieveTableHtml(list){
       <td><b>${rec.summary.pct}%</b></td>
       <td>${rec.summary.pass}✅ / ${rec.summary.fail}❌ / ${rec.summary.na}➖</td>
       <td><div class="histactions">
-        <button class="view" data-act="view">Xem</button>
-        <button class="view" data-act="load">Nạp lại</button>
+        <button class="viewbtn" data-act="view">Xem</button>
+        <button class="viewbtn" data-act="load">Nạp lại</button>
         <button data-act="pdf">PDF</button>
         <button data-act="csv">CSV</button>
       </div></td>
