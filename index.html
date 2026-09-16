@@ -811,9 +811,8 @@ const LS_EVIDENCE_TREE = "ild_startup_checklist_evidence_tree_v1";
 const LS_EVIDENCE_TREE_TS = "ild_startup_checklist_evidence_tree_ts_v1";
 const LS_DELETED = "ild_startup_checklist_deleted_ids_v1";
 const LS_LAST_SYNC = "ild_startup_checklist_last_sync_v1";
-const SYNC_FILE_NAME = "Startup_Checklist_Data.json";
 /* Hiệu chỉnh: đồng bộ qua Firebase (Cloud) — cấu hình Firebase (dán nguyên object firebaseConfig từ
-   Firebase Console) nhập tại tab Đồng bộ, lưu RIÊNG khoá này trên từng máy (giống syncDirHandle),
+   Firebase Console) nhập tại tab Đồng bộ, lưu RIÊNG khoá này trên từng máy (giống thư mục lưu ảnh),
    KHÔNG gộp vào SETTINGS/snapshotData để tránh bị máy khác "gộp đè" mất cấu hình khi Pull dữ liệu. */
 const LS_FIREBASE_CFG = "ild_startup_checklist_firebase_cfg_v1";
 const FIREBASE_DOC_ID = "ild_startup_checklist_shared";
@@ -1050,9 +1049,9 @@ function groupByStage(items){
 function loadSettings(){
   try{
     const raw = localStorage.getItem(LS_SETTINGS);
-    if(raw) return Object.assign({companyName:"ILD Coffee Vietnam", staff: DEFAULT_STAFF.slice(), autoSync:false, updatedAt:0}, JSON.parse(raw));
+    if(raw) return Object.assign({companyName:"ILD Coffee Vietnam", staff: DEFAULT_STAFF.slice(), updatedAt:0}, JSON.parse(raw));
   }catch(e){}
-  return {companyName:"ILD Coffee Vietnam", staff: DEFAULT_STAFF.slice(), autoSync:false, updatedAt:0};
+  return {companyName:"ILD Coffee Vietnam", staff: DEFAULT_STAFF.slice(), updatedAt:0};
 }
 let SETTINGS = loadSettings();
 function saveSettings(){
@@ -1062,7 +1061,9 @@ function saveSettings(){
 }
 /* Loại bỏ dữ liệu ảnh nhúng trực tiếp (base64, storedIn:"inline") khỏi bản snapshot trước khi đẩy lên
    Firebase — chỉ đồng bộ Lịch sử phiên/Danh mục-Cài đặt/Nhật ký, KHÔNG đồng bộ ảnh bằng chứng lên Cloud
-   (ảnh vẫn đồng bộ được qua thư mục dùng chung OneDrive/Google Drive như cũ, không liên quan Firebase). */
+   (ảnh chỉ lưu trên ổ đĩa/thư mục đã chọn ở tab Cài đặt — có thể tự chọn 1 thư mục OneDrive/Google Drive
+   dùng chung nếu muốn ảnh cũng đồng bộ được giữa nhiều máy, nhưng đó là lựa chọn của người dùng, không
+   phải cơ chế do app tự quản lý). */
 function sanitizeForCloudSync(snap){
   const clone = JSON.parse(JSON.stringify(snap));
   const stripPhotos = (items)=>{
@@ -1460,12 +1461,8 @@ function renderCheck(){
        máy khác. Nếu chưa kết nối thư mục thì vẫn chỉ lưu cục bộ như cũ, không bắt buộc kết nối. */
     saveDraft();
     logAction("Lưu Checklist", `${fmtDateRangeVN(h)} · ${s.pct}% hoàn thành`, "");
-    const sr = await backgroundSyncIfConnected("Lưu Checklist");
     backgroundCloudSyncIfConfigured("Lưu Checklist");
-    if(sr.ok) toast("✅ Đã lưu và đồng bộ vào file dùng chung");
-    else if(sr.reason==="no-permission") toast("Đã lưu ✅ — mất quyền truy cập thư mục đồng bộ, vào tab Đồng bộ để cấp lại", 3600);
-    else if(sr.reason==="error") toast("Đã lưu ✅ — đồng bộ lỗi, vào tab Đồng bộ để kiểm tra", 3200);
-    else toast("Đã lưu ✅ (có thể tiếp tục sau)");
+    toast("Đã lưu ✅ (có thể tiếp tục sau)");
   });
   qs("#btnSubmit").addEventListener("click", submitSession);
   qs("#btnPrint").addEventListener("click", ()=>printSessions([{id:"draft", header:STATE.header, items:STATE.items, summary:computeSummary()}]));
@@ -1846,9 +1843,7 @@ function submitSession(){
   setHistory(list);
   logAction("Submit phiên Checklist", `${fmtDateRangeVN(h)} · 100% hoàn thành`, rec.id);
   /* Hiệu chỉnh: Submit chốt 1 đợt Shutdown/Start-up (1 tháng/lần) chính thức vào Lịch sử — mốc quan trọng
-     nên LUÔN thử đồng bộ ngay nếu đã kết nối thư mục dùng chung, không còn phụ thuộc riêng vào checkbox
-     "Tự động đồng bộ nền" (checkbox đó giờ chỉ còn kiểm soát đồng bộ định kỳ/khi quay lại tab). */
-  backgroundSyncIfConnected("Submit phiên Checklist");
+     nên LUÔN đẩy ngay lên Firebase. */
   backgroundCloudSyncIfConfigured("Submit phiên Checklist");
   /* PHASE 12: Better Summary — thay confirm()/toast() bằng modal tổng kết (Inspection Completed) */
   showSummaryModal(rec);
@@ -2243,9 +2238,7 @@ function retrieveTableHtml(list){
   return html;
 }
 
-/* ===================== TAB: ĐỒNG BỘ (File System Access API) ===================== */
-let syncDirHandle = null;
-let syncing = false;
+/* ===================== TAB: ĐỒNG BỘ (Firebase Cloud + Sao lưu JSON thủ công) ===================== */
 /* Hiệu chỉnh: theo dõi thời điểm đồng bộ thành công gần nhất (kể cả đồng bộ nền âm thầm), lưu localStorage
    để hiện lại đúng sau khi mở lại app — giúp phát hiện ngay khi 1 máy "im lặng" không đồng bộ được nữa
    thay vì chỉ biết khi mở file lên thấy thiếu dữ liệu. */
@@ -2253,7 +2246,7 @@ let LAST_SYNC_AT = Number(localStorage.getItem(LS_LAST_SYNC) || 0) || 0;
 function markSyncedNow(){
   LAST_SYNC_AT = Date.now();
   localStorage.setItem(LS_LAST_SYNC, String(LAST_SYNC_AT));
-  if(qs("#view-sync") && qs("#view-sync").classList.contains("active")) updateSyncUI(!!syncDirHandle, syncDirHandle ? syncDirHandle.name : "");
+  updateCloudSyncUI();
 }
 function idbOpenDB(){
   return new Promise((resolve,reject)=>{
@@ -2266,25 +2259,10 @@ function idbOpenDB(){
 async function idbGet(key){ const db = await idbOpenDB(); return new Promise((res,rej)=>{ const tx=db.transaction("meta","readonly").objectStore("meta").get(key); tx.onsuccess=()=>res(tx.result); tx.onerror=()=>rej(tx.error); }); }
 async function idbSet(key,val){ const db = await idbOpenDB(); return new Promise((res,rej)=>{ const tx=db.transaction("meta","readwrite").objectStore("meta").put(val,key); tx.onsuccess=()=>res(true); tx.onerror=()=>rej(tx.error); }); }
 
-function folderSyncSupported(){ return typeof window.showDirectoryPicker === "function"; }
-
 function renderSync(){
   const root = qs("#view-sync");
   root.innerHTML = `
-  <div class="card">
-    <div class="section-title">Đồng bộ dữ liệu qua thư mục dùng chung</div>
-    <div class="sub">Dùng thư mục OneDrive/Google Drive Desktop đồng bộ trên máy tính để chia sẻ Lịch sử checklist, danh mục Checklist đã chỉnh sửa, Highlight, Kế hoạch Cleaning, Cài đặt, Data Log, <b>phiên Checklist đang chấm dở (chưa Nộp/Lưu phiên)</b> và <b>Khu vực/Vị trí thiết bị Evidence đã tuỳ chỉnh</b> giữa nhiều máy — giống cơ chế Đồng bộ của app GMP CloseGap. Chỉ hỗ trợ trên Chrome/Edge. Riêng ảnh bằng chứng (Evidence) là file thật lưu trong thư mục dùng chung, tự đồng bộ qua OneDrive/Google Drive, không cần bấm "Đồng bộ ngay".</div>
-    <div id="syncStatus" class="hint info">Đang kiểm tra kết nối...</div>
-    <div class="btnrow">
-      <button class="btn teal" id="btnSyncNow">🔄 Đồng bộ ngay</button>
-      <button class="btn ghost" id="btnChangeFolder" style="display:none;">Đổi thư mục khác</button>
-    </div>
-    <label class="check2" style="margin-top:12px;">
-      <input type="checkbox" id="chkAutoSync" ${SETTINGS.autoSync?"checked":""}> Tự động đồng bộ nền (mỗi vài phút &amp; khi quay lại tab trình duyệt)
-    </label>
-    <div class="sub" style="margin-top:4px;">Nút <b>"Lưu"</b> và <b>"Submit"</b> ở tab Checklist LUÔN tự đồng bộ ngay khi đã kết nối thư mục, không phụ thuộc tuỳ chọn này.</div>
-  </div>
-  <div class="hint info">📁 Thư mục lưu ảnh bằng chứng nay được cấu hình tại tab <b>Cài đặt</b>.</div>
+  <div class="hint info">📁 Thư mục lưu ảnh bằng chứng được cấu hình tại tab <b>Cài đặt</b> — ảnh không đồng bộ lên Firebase, chỉ lưu trên ổ đĩa máy đó/thư mục dùng chung bạn tự chọn.</div>
   <div class="card">
     <div class="card-h"><span>☁️ Đồng bộ Cloud (Firebase)</span><span class="rule"></span></div>
     <div class="sub">Đồng bộ qua Internet (không cần OneDrive/Google Drive, hoạt động trên mọi trình duyệt kể cả điện thoại) — đã cấu hình sẵn, dùng ngay không cần thiết lập gì thêm. <b>Hoàn toàn tự động</b>: đăng nhập xong tự tải dữ liệu mới nhất về, "Lưu"/"Submit" tự đẩy lên — không cần bấm nút nào ở đây. 2 nút bên dưới chỉ để đồng bộ lại thủ công khi cần (vd nghi ngờ dữ liệu chưa mới nhất). Không đồng bộ ảnh bằng chứng lên Firebase.</div>
@@ -2302,16 +2280,13 @@ function renderSync(){
   </div>
   <div class="card">
     <div class="card-h"><span>Sao lưu / Phục hồi thủ công (mọi trình duyệt)</span><span class="rule"></span></div>
-    <div class="sub">Dùng khi không dùng được đồng bộ thư mục (Safari/Firefox), hoặc muốn chuyển dữ liệu thủ công sang máy khác. Lưu ý: ảnh lưu ngoài thư mục sẽ không nằm trong file backup này, chỉ ảnh nhúng trực tiếp (khi chưa chọn thư mục lưu ảnh) mới được gồm trong bản sao lưu.</div>
+    <div class="sub">Dùng khi cần 1 bản sao dữ liệu ngoại tuyến (không phụ thuộc Firebase), hoặc chuyển dữ liệu thủ công sang máy khác. Lưu ý: ảnh lưu ngoài thư mục sẽ không nằm trong file backup này, chỉ ảnh nhúng trực tiếp (khi chưa chọn thư mục lưu ảnh) mới được gồm trong bản sao lưu.</div>
     <div class="btnrow">
       <button class="btn ghost" id="btnBackupJson">⬇️ Tải file JSON toàn bộ dữ liệu</button>
     </div>
     <label class="fld" style="margin-top:10px;"><span class="lab">Phục hồi từ file JSON</span><input class="inp" type="file" accept=".json" id="restoreFile"></label>
   </div>`;
 
-  qs("#btnSyncNow").addEventListener("click", ()=> doOneClickSync(false));
-  qs("#btnChangeFolder").addEventListener("click", ()=> connectFolder());
-  qs("#chkAutoSync").addEventListener("change", e=>{ SETTINGS.autoSync = e.target.checked; saveSettings(); });
   qs("#btnBackupJson").addEventListener("click", backupJson);
   qs("#restoreFile").addEventListener("change", e=>{ if(e.target.files[0]) restoreJson(e.target.files[0]); });
 
@@ -2345,8 +2320,6 @@ function renderSync(){
     updateCloudSyncUI();
   });
 
-  updateSyncUI(false);
-  restoreSyncFolderFromIDB();
   updateCloudSyncUI();
 }
 function updateCloudSyncUI(overrideMsg){
@@ -2363,61 +2336,6 @@ function updateCloudSyncUI(overrideMsg){
   el.className = "hint ok";
   el.textContent = `✅ ${cfgTxt} ${lastTxt} "Lưu"/"Submit" ở tab Checklist sẽ tự đẩy dữ liệu lên; bấm "Tải về" khi mở app trên máy khác để nhận dữ liệu mới nhất.`;
 }
-function updateSyncUI(connected, folderName){
-  const statusEl = qs("#syncStatus");
-  const changeBtn = qs("#btnChangeFolder");
-  if(!statusEl) return;
-  if(!folderSyncSupported()){
-    statusEl.className = "hint";
-    statusEl.textContent = "⚠️ Trình duyệt này không hỗ trợ đồng bộ thư mục — vui lòng dùng Chrome hoặc Edge. Có thể dùng Sao lưu/Phục hồi JSON thủ công bên dưới.";
-    if(changeBtn) changeBtn.style.display = "none";
-    return;
-  }
-  if(connected){
-    /* Hiệu chỉnh: hiện rõ thời điểm đồng bộ lần cuối + cảnh báo nếu lâu chưa đồng bộ lại được, để người
-       dùng phát hiện ngay khi máy đang dùng "im lặng" không đồng bộ được thay vì chỉ tin vào % hiển thị. */
-    const lastTxt = LAST_SYNC_AT ? `Đồng bộ lần cuối: ${new Date(LAST_SYNC_AT).toLocaleString("vi-VN")}.` : "Chưa đồng bộ lần nào trên máy này.";
-    const staleMin = LAST_SYNC_AT ? Math.round((Date.now()-LAST_SYNC_AT)/60000) : 0;
-    const staleWarn = (LAST_SYNC_AT && staleMin > 20) ? ` ⚠️ Đã ${staleMin} phút chưa đồng bộ lại — kiểm tra kết nối mạng/OneDrive hoặc bấm "Đồng bộ ngay".` : "";
-    statusEl.className = staleWarn ? "hint" : "hint ok";
-    statusEl.textContent = `✅ Đã kết nối thư mục "${folderName}". ${lastTxt}${staleWarn} Nhớ đợi OneDrive/Google Drive đồng bộ xong trước khi mở app ở máy khác.`;
-    if(changeBtn) changeBtn.style.display = "inline-flex";
-  } else {
-    statusEl.className = "hint info";
-    statusEl.textContent = 'Chưa kết nối thư mục nào — bấm "Đồng bộ ngay" để chọn thư mục dùng chung.';
-    if(changeBtn) changeBtn.style.display = "none";
-  }
-}
-async function restoreSyncFolderFromIDB(){
-  if(!folderSyncSupported()) return;
-  try{
-    const handle = await idbGet("syncFolderHandle");
-    if(!handle) { updateSyncUI(false); return; }
-    syncDirHandle = handle;
-    const perm = await handle.queryPermission({mode:"readwrite"});
-    updateSyncUI(true, handle.name);
-    if(perm !== "granted"){
-      qs("#syncStatus").textContent = `Thư mục "${handle.name}" đã từng kết nối — bấm "Đồng bộ ngay" để xác nhận lại quyền truy cập.`;
-    }
-  }catch(e){ updateSyncUI(false); }
-}
-async function ensureSyncPermission(mode){
-  mode = mode || "readwrite";
-  if(!syncDirHandle) return false;
-  let perm = await syncDirHandle.queryPermission({mode});
-  if(perm !== "granted") perm = await syncDirHandle.requestPermission({mode});
-  return perm === "granted";
-}
-async function connectFolder(){
-  try{
-    const handle = await window.showDirectoryPicker({mode:"readwrite"});
-    syncDirHandle = handle;
-    await idbSet("syncFolderHandle", handle);
-    updateSyncUI(true, handle.name);
-    logAction("Kết nối thư mục đồng bộ", handle.name, "");
-    toast("Đã kết nối thư mục mới");
-  }catch(e){ if(e.name!=="AbortError") toast("Lỗi: "+e.message); }
-}
 function snapshotData(){
   /* Hiệu chỉnh: sửa lỗi Highlight/Plan không được đồng bộ — snapshotData() nay gồm cả
      Highlight (LS_HIGHLIGHT) và Plan (LS_CLEANPLAN), và cả danh sách ID đã xoá (deletedIds/tombstone)
@@ -2429,12 +2347,6 @@ function snapshotData(){
     highlight: getHighlights(), cleanplan: getCleanPlan(), deletedIds: getDeletedIds(),
     draft: STATE, evidenceTree: EVIDENCE_TREE_OVERRIDE, evidenceTreeUpdatedAt: EVIDENCE_TREE_UPDATED_AT,
     exportedAt: new Date().toISOString() };
-}
-async function writeSnapshotToFolder(){
-  const fileHandle = await syncDirHandle.getFileHandle(SYNC_FILE_NAME, {create:true});
-  const writable = await fileHandle.createWritable();
-  await writable.write(JSON.stringify(snapshotData()));
-  await writable.close();
 }
 function mergeRemoteData(d){
   const ctr = {added:0, updated:0, skipped:0, logAdded:0, highlightAdded:0, highlightUpdated:0, cleanplanAdded:0, draftAdopted:false, draftMerged:0, evidenceTreeUpdated:false};
@@ -2551,23 +2463,6 @@ function mergeRemoteData(d){
   }
   return ctr;
 }
-/* Hiệu chỉnh: tách phần lõi "đọc file remote -> gộp -> ghi lại file" ra syncCore() dùng chung cho cả
-   đồng bộ thủ công (doOneClickSync, có thể mở hộp thoại chọn thư mục nếu cần) và đồng bộ NỀN tự động
-   (backgroundSyncIfConnected, KHÔNG bao giờ tự mở hộp thoại xin quyền vì trình duyệt chặn hành vi đó khi
-   không xuất phát trực tiếp từ thao tác của người dùng). Hàm này giả định syncDirHandle đã có sẵn và đã
-   có quyền readwrite khi được gọi. */
-async function syncCore(){
-  let ctr = {added:0, updated:0, skipped:0, logAdded:0, highlightAdded:0, highlightUpdated:0, cleanplanAdded:0, draftAdopted:false, draftMerged:0, evidenceTreeUpdated:false};
-  try{
-    const fileHandle = await syncDirHandle.getFileHandle(SYNC_FILE_NAME, {create:false});
-    const file = await fileHandle.getFile();
-    const d = JSON.parse(await file.text());
-    ctr = mergeRemoteData(d);
-  }catch(e){ /* chưa có file trên thư mục dùng chung, hoặc file lỗi -- vẫn tiếp tục ghi bản hiện tại lên */ }
-  await writeSnapshotToFolder();
-  markSyncedNow();
-  return ctr;
-}
 function refreshOpenTabsAfterSync(){
   applyBranding();
   if(qs("#view-history").classList.contains("active")) renderHistory();
@@ -2585,63 +2480,6 @@ function syncLogNote(ctr){
   const draftNote = ctr.draftAdopted ? ", đã nhận nháp Checklist từ máy khác" : (ctr.draftMerged ? `, +${ctr.draftMerged} hạng mục nháp từ máy khác` : "");
   return `+${ctr.added} phiên mới, cập nhật ${ctr.updated}, +${ctr.logAdded} log, +${ctr.highlightAdded||0} Highlight${ctr.highlightUpdated?` (cập nhật ${ctr.highlightUpdated})`:""}, +${ctr.cleanplanAdded||0} Plan${draftNote}${ctr.evidenceTreeUpdated ? ", cập nhật Khu vực/Vị trí Evidence" : ""}`;
 }
-async function doOneClickSync(silent){
-  if(!folderSyncSupported()){ toast("Trình duyệt không hỗ trợ đồng bộ thư mục"); return; }
-  if(syncing) return;
-  syncing = true;
-  try{
-    if(!syncDirHandle){ const cached = await idbGet("syncFolderHandle"); if(cached) syncDirHandle = cached; }
-    let ok = syncDirHandle ? await ensureSyncPermission("readwrite") : false;
-    if(!ok){
-      const handle = await window.showDirectoryPicker({mode:"readwrite"});
-      syncDirHandle = handle;
-      await idbSet("syncFolderHandle", handle);
-      ok = await ensureSyncPermission("readwrite");
-    }
-    if(!ok){ toast("Chưa được cấp quyền truy cập thư mục"); return; }
-    updateSyncUI(true, syncDirHandle.name);
-    const ctr = await syncCore();
-    refreshOpenTabsAfterSync();
-    const draftNote = ctr.draftAdopted ? ", đã nhận nháp Checklist từ máy khác" : (ctr.draftMerged ? `, +${ctr.draftMerged} hạng mục nháp từ máy khác` : "");
-    logAction("Đồng bộ dữ liệu", syncLogNote(ctr), "");
-    if(!silent) toast(`✅ Đồng bộ xong! +${ctr.added} phiên, +${ctr.highlightAdded||0} Highlight${ctr.highlightUpdated?` (cập nhật ${ctr.highlightUpdated})`:""}, +${ctr.cleanplanAdded||0} Plan${draftNote}, bỏ qua ${ctr.skipped}.`);
-  }catch(e){
-    /* Hiệu chỉnh: trước đây lỗi đồng bộ ở chế độ "silent" (nền/tự động) bị NUỐT HOÀN TOÀN — không ai biết
-       máy đó đã ngừng đồng bộ được, đây là 1 nguyên nhân khiến "một số máy" âm thầm lệch dữ liệu. Nay vẫn
-       báo lỗi (toast ngắn gọn, không chặn thao tác) kể cả khi silent=true, chỉ bỏ qua AbortError (người
-       dùng tự huỷ hộp thoại chọn thư mục). */
-    if(e.name!=="AbortError"){
-      toast(silent ? "⚠️ Đồng bộ nền lỗi: "+e.message : "Lỗi khi đồng bộ: "+e.message, silent?3000:3200);
-    }
-  } finally { syncing = false; }
-}
-/* Hiệu chỉnh: đồng bộ NỀN — không tự ý mở hộp thoại chọn thư mục/xin quyền (trình duyệt chặn nếu không có
-   thao tác trực tiếp của người dùng ngay trước đó). Chỉ chạy khi đã có sẵn thư mục VÀ quyền readwrite đã
-   ở trạng thái "granted" sẵn từ trước; nếu chưa thì bỏ qua, để lần bấm thủ công tiếp theo ("Lưu", "Submit",
-   "Đồng bộ ngay") xin lại quyền. Dùng cho: nút "Lưu", nút "Submit", đồng bộ định kỳ và khi quay lại tab
-   trình duyệt (xem phần INIT cuối file). */
-async function backgroundSyncIfConnected(reasonLabel){
-  if(!folderSyncSupported() || !syncDirHandle) return {ok:false, reason:"not-connected"};
-  if(syncing) return {ok:false, reason:"busy"};
-  syncing = true;
-  try{
-    const perm = await syncDirHandle.queryPermission({mode:"readwrite"});
-    if(perm !== "granted"){ syncing = false; return {ok:false, reason:"no-permission"}; }
-    const ctr = await syncCore();
-    refreshOpenTabsAfterSync();
-    updateSyncUI(true, syncDirHandle.name);
-    logAction("Đồng bộ dữ liệu" + (reasonLabel ? ` (${reasonLabel})` : ""), syncLogNote(ctr), "");
-    syncing = false;
-    return {ok:true, reason:"success", ctr};
-  }catch(e){
-    syncing = false;
-    return {ok:false, reason:"error", error:e};
-  }
-}
-/* Hiệu chỉnh: checkbox "Tự động đồng bộ nền" nay điều khiển đồng bộ ĐỊNH KỲ + khi quay lại tab trình
-   duyệt (xem phần INIT cuối file); nút "Lưu"/"Submit" ở tab Checklist LUÔN tự đồng bộ ngay khi đã kết nối
-   thư mục, không còn phụ thuộc checkbox này nữa. */
-function maybeAutoSync(reasonLabel){ if(SETTINGS.autoSync) backgroundSyncIfConnected(reasonLabel); }
 
 /* ===================== BACKUP / RESTORE JSON (manual) ===================== */
 function backupJson(){
@@ -2773,7 +2611,7 @@ function renderSettings(){
   </div>
   <div class="card">
     <div class="section-title">Quản lý dữ liệu ứng dụng</div>
-    <div class="sub">Sao lưu/phục hồi nhanh — dùng tab <b>Đồng bộ</b> nếu muốn đồng bộ thư mục dùng chung liên tục.</div>
+    <div class="sub">Sao lưu/phục hồi nhanh — dùng tab <b>Đồng bộ</b> để đồng bộ liên tục qua Firebase Cloud.</div>
     <div class="btnrow">
       <button class="btn ghost" id="btnGoBackup">⬇️ Tải bản sao lưu JSON</button>
       <button class="btn danger" id="btnWipe">🗑️ Xoá toàn bộ dữ liệu ứng dụng</button>
@@ -2848,13 +2686,13 @@ function renderGuide(){
       <li><b>Chỉnh sửa</b> — thêm/sửa/xoá hạng mục trong danh mục Checklist, nhóm theo Công đoạn cho gọn. <b>Yêu cầu mật khẩu ngay khi vào tab</b> (vào rồi thì Lưu/Xoá bên trong không hỏi lại).</li>
       <li><b>Lịch sử</b> — xem lại các phiên đã Submit, nạp lại để chỉnh sửa tiếp, xuất CSV/PDF từng phiên. <b>Yêu cầu mật khẩu</b> khi xoá 1 phiên đã Submit khỏi Lịch sử.</li>
       <li><b>Truy xuất</b> — lọc hồ sơ theo khoảng ngày/trạng thái, chọn nhiều phiên để xuất 1 báo cáo PDF gộp.</li>
-      <li><b>Đồng bộ</b> — kết nối thư mục OneDrive/Google Drive Desktop dùng chung để đồng bộ dữ liệu giữa nhiều máy; hoặc sao lưu/phục hồi JSON thủ công. Nút <b>"Lưu"</b> và <b>"Submit"</b> ở tab Checklist luôn tự đồng bộ ngay khi bấm (nếu đã kết nối thư mục). Bật <b>"Tự động đồng bộ nền"</b> để app tự đồng bộ định kỳ mỗi vài phút và mỗi khi quay lại tab trình duyệt, không cần bấm "Đồng bộ ngay" thủ công — chỉ cần mở app 1 lần và bấm "Đồng bộ ngay" 1 lần đầu để cấp quyền, các lần sau app tự làm. Trạng thái hiện rõ <b>thời điểm đồng bộ lần cuối</b> và cảnh báo nếu lâu chưa đồng bộ lại được (nghi ngờ mất kết nối/quyền truy cập).</li>
+      <li><b>Đồng bộ</b> — dữ liệu đồng bộ qua Internet bằng <b>Firebase Cloud</b> (đã cấu hình sẵn, dùng ngay không cần thiết lập gì) giữa nhiều máy/điện thoại; hoặc sao lưu/phục hồi JSON thủ công (ngoại tuyến). Hoàn toàn tự động: đăng nhập xong tự tải dữ liệu mới nhất về, nút <b>"Lưu"</b> và <b>"Submit"</b> ở tab Checklist tự đẩy dữ liệu lên ngay khi bấm — không cần thao tác gì thêm. 2 nút "Đẩy lên"/"Tải về" chỉ để đồng bộ lại thủ công khi cần. Trạng thái hiện rõ <b>thời điểm đồng bộ lần cuối</b>.</li>
       <li><b>Data Log</b> — nhật ký mọi thay đổi dữ liệu để truy vết khi cần, kèm <b>ID máy tính</b> đã thực hiện thao tác.</li>
       <li><b>Cài đặt</b> — tên công ty, danh sách QA/Người thực hiện, <b>thư mục lưu ảnh bằng chứng</b> (chuyển từ tab Đồng bộ sang đây), quản lý/xoá dữ liệu ứng dụng. <b>Yêu cầu mật khẩu ngay khi vào tab</b> (vào rồi thì Lưu/Thêm/Xoá bên trong không hỏi lại).</li>
     </ul>
     <h4>4. Quy trình đề xuất</h4>
-    <p>Chọn Ngày bắt đầu/kết thúc → chấm từng Công đoạn (hoặc "Đạt hết" toàn phiên/từng Công đoạn) kèm ghi chú và ảnh bằng chứng (chụp mới hoặc dán Ctrl+V) cho các mục Không đạt → "Lưu" bất cứ lúc nào nếu chưa xong ca (tự đồng bộ ngay nếu đã kết nối thư mục) → khi đủ 100% bấm <b>Submit</b> để chốt chính thức 1 đợt Shutdown/Start-up vào Lịch sử (cũng tự đồng bộ ngay) → dùng tab Truy xuất khi cần tìm lại hồ sơ cũ và xuất báo cáo PDF nộp QA/khách hàng.</p>
-    <p><b>Chấm điểm/bổ sung tiếp trên máy khác:</b> phiên đang chấm dở (bấm "Lưu", chưa Submit) và Khu vực/Vị trí thiết bị Evidence đã tuỳ chỉnh nay đều được đưa vào tab Đồng bộ. Kết nối thư mục 1 lần trên mỗi máy (tab Đồng bộ → "Đồng bộ ngay" → chọn cùng 1 thư mục OneDrive/Google Drive dùng chung) — sau đó mỗi lần bấm <b>"Lưu"</b> hoặc <b>"Submit"</b> ở máy nào, máy đó tự đẩy dữ liệu lên; các máy khác chỉ cần đã bật <b>"Tự động đồng bộ nền"</b> (tab Đồng bộ) là sẽ tự nhận về định kỳ, hoặc bấm "Đồng bộ ngay" để nhận ngay lập tức. Nếu máy B chưa chấm gì thì nhận nguyên nháp máy A; nếu máy B đang chấm dở cùng đợt (trùng Ngày bắt đầu/kết thúc) thì chỉ bổ sung các hạng mục còn trống, không đè lên phần máy B đã chấm.</p>
+    <p>Chọn Ngày bắt đầu/kết thúc → chấm từng Công đoạn (hoặc "Đạt hết" toàn phiên/từng Công đoạn) kèm ghi chú và ảnh bằng chứng (chụp mới hoặc dán Ctrl+V) cho các mục Không đạt → "Lưu" bất cứ lúc nào nếu chưa xong ca (tự đẩy lên Firebase ngay) → khi đủ 100% bấm <b>Submit</b> để chốt chính thức 1 đợt Shutdown/Start-up vào Lịch sử (cũng tự đẩy lên ngay) → dùng tab Truy xuất khi cần tìm lại hồ sơ cũ và xuất báo cáo PDF nộp QA/khách hàng.</p>
+    <p><b>Chấm điểm/bổ sung tiếp trên máy khác:</b> phiên đang chấm dở (bấm "Lưu", chưa Submit) và Khu vực/Vị trí thiết bị Evidence đã tuỳ chỉnh nay đều đồng bộ qua Firebase. Đăng nhập trên máy nào, máy đó tự tải dữ liệu mới nhất về ngay; sau đó mỗi lần bấm <b>"Lưu"</b> hoặc <b>"Submit"</b> ở máy nào, máy đó tự đẩy dữ liệu lên — các máy khác đang mở app sẽ tự nhận về định kỳ (mỗi vài phút/khi quay lại tab), hoặc bấm "Tải về từ Firebase" (tab Đồng bộ) để nhận ngay lập tức. Nếu máy B chưa chấm gì thì nhận nguyên nháp máy A; nếu máy B đang chấm dở cùng đợt (trùng Ngày bắt đầu/kết thúc) thì chỉ bổ sung các hạng mục còn trống, không đè lên phần máy B đã chấm.</p>
     <h4>5. Ý nghĩa nhãn màu</h4>
     <div class="kv"><b>Mức ưu tiên</b> <span class="badge hi">Cao</span> <span class="badge md">TB</span> <span class="badge lo">Thấp</span></div>
     <div class="kv"><b>Viền thẻ hạng mục</b> Xanh = Đạt · Đỏ = Không đạt · Xám = N/A</div>
@@ -2970,7 +2808,7 @@ function importHighlightCsv(text){
   HIGHLIGHT_FILTER = "";
   renderHighlight();
   toast(`Đã nhập ${ok} Highlight từ file${skip? `, bỏ qua ${skip} dòng thiếu Nội dung`:""}`);
-  if(ok) backgroundSyncIfConnected("Nhập Highlight từ file");
+  if(ok) backgroundCloudSyncIfConfigured("Nhập Highlight từ file");
 }
 
 /* Hiệu chỉnh: ảnh bằng chứng khi Hoàn thành Highlight — lưu vào thư mục con "Evidencehighlight" bên trong
@@ -3057,7 +2895,7 @@ async function removeHighlightPhoto(id, idx){
   setHighlights(list);
   logAction("Xoá ảnh bằng chứng Highlight", `${id} · ${p.name}`, id);
   renderHighlight();
-  backgroundSyncIfConnected("Xoá ảnh bằng chứng Highlight");
+  backgroundCloudSyncIfConfigured("Xoá ảnh bằng chứng Highlight");
 }
 /* Hiệu chỉnh: modal "Xác nhận hoàn thành Highlight" thay cho prompt() cũ — cho phép confirm/đổi PIC,
    nhập ghi chú hoàn thành và đính kèm ảnh bằng chứng (tuỳ chọn, chọn file hoặc dán Ctrl+V) trước khi tick Done. */
@@ -3115,15 +2953,10 @@ async function confirmHlDone(){
   if(files.length) await addPhotosToHighlight(id, files);
   logAction("Hoàn thành Highlight", `${it.text} -> PIC: ${pic}${note?(" · Ghi chú: "+note):""}${files.length?(" · +"+files.length+" ảnh"):""}`, id);
   renderHighlight();
-  /* Hiệu chỉnh: sửa lỗi "Done Highlight nhưng máy khác không thấy" — trước đây đánh dấu Hoàn thành chỉ
-     lưu localStorage của máy đang thao tác, không có bước nào chủ động đẩy lên file dùng chung; phải đợi
-     người dùng tự bấm "Đồng bộ ngay" hoặc chờ đồng bộ nền định kỳ. Nay tự đồng bộ NGAY nếu đã kết nối
-     thư mục, giống cách nút "Lưu"/"Submit" ở tab Checklist đã làm. */
-  const sr = await backgroundSyncIfConnected("Hoàn thành Highlight");
-  if(sr.ok) toast("✅ Đã đánh dấu Hoàn thành và đồng bộ");
-  else if(sr.reason==="no-permission") toast("✅ Đã đánh dấu Hoàn thành — mất quyền truy cập thư mục đồng bộ, vào tab Đồng bộ để cấp lại", 3600);
-  else if(sr.reason==="error") toast("✅ Đã đánh dấu Hoàn thành — đồng bộ lỗi, vào tab Đồng bộ để kiểm tra", 3200);
-  else toast("✅ Đã đánh dấu Hoàn thành");
+  /* Hiệu chỉnh: đánh dấu Hoàn thành tự đẩy ngay lên Firebase, giống cách nút "Lưu"/"Submit" ở tab
+     Checklist đã làm — máy khác mở app lên sẽ tự thấy ngay. */
+  backgroundCloudSyncIfConfigured("Hoàn thành Highlight");
+  toast("✅ Đã đánh dấu Hoàn thành");
 }
 
 /* Hiệu chỉnh: modal "Thêm Highlight" — gộp nhập tay 1 mục & nhập nhanh Excel/CSV vào 1 hộp thoại, chỉ mở
@@ -3184,7 +3017,7 @@ function openHlAddModal(){
     closeHlAddModal();
     renderHighlight();
     toast("Đã thêm Highlight");
-    backgroundSyncIfConnected("Thêm Highlight");
+    backgroundCloudSyncIfConfigured("Thêm Highlight");
   });
   const cancelBtn = qs("#hlAddCancel");
   if(cancelBtn) cancelBtn.addEventListener("click", closeHlAddModal);
@@ -3282,7 +3115,7 @@ function renderHighlight(){
         setHighlights(list);
         logAction("Cập nhật Highlight", `${it.text} -> Chưa xong`, "");
         renderHighlight();
-        backgroundSyncIfConnected("Bỏ tick Hoàn thành Highlight");
+        backgroundCloudSyncIfConfigured("Bỏ tick Hoàn thành Highlight");
       }
     });
   });
@@ -3293,7 +3126,7 @@ function renderHighlight(){
       const it = list.find(x=>x.id===id); if(!it) return;
       it.text = e.target.value; it.updatedAt = Date.now(); setHighlights(list);
       logAction("Sửa Highlight", it.text, "");
-      backgroundSyncIfConnected("Sửa nội dung Highlight");
+      backgroundCloudSyncIfConfigured("Sửa nội dung Highlight");
     });
   });
   /* Hiệu chỉnh: cho phép đổi PIC ngay trên từng dòng, không cần đợi đến lúc tick Hoàn thành */
@@ -3304,7 +3137,7 @@ function renderHighlight(){
       const it = list.find(x=>x.id===id); if(!it) return;
       it.pic = e.target.value.trim(); it.updatedAt = Date.now(); setHighlights(list);
       logAction("Sửa PIC Highlight", `${it.text} -> PIC: ${it.pic||"(trống)"}`, id);
-      backgroundSyncIfConnected("Sửa PIC Highlight");
+      backgroundCloudSyncIfConfigured("Sửa PIC Highlight");
     });
   });
   qsa("[data-delhl]", root).forEach(btn=>{
@@ -3316,7 +3149,7 @@ function renderHighlight(){
       logAction("Xoá Highlight", id, "");
       renderHighlight();
       toast("Đã xoá");
-      backgroundSyncIfConnected("Xoá Highlight");
+      backgroundCloudSyncIfConfigured("Xoá Highlight");
     });
   });
   /* Hiệu chỉnh: xem/xoá ảnh bằng chứng đã đính kèm khi Hoàn thành Highlight */
@@ -4183,19 +4016,19 @@ qsa(".tab").forEach(t=> t.addEventListener("click", ()=> switchTab(t.dataset.tab
 /* ===================== INIT ===================== */
 applyBranding();
 renderCheck();
-/* Hiệu chỉnh: đề xuất giải pháp đồng bộ tốt hơn — trước đây thư mục đồng bộ (syncDirHandle) chỉ được
-   khôi phục từ IndexedDB khi người dùng MỞ tab "Đồng bộ" ít nhất 1 lần trong phiên làm việc (do
-   restoreSyncFolderFromIDB() trước đây chỉ được gọi bên trong renderSync()). Máy nào chỉ dùng tab
-   Checklist mà không bao giờ mở tab Đồng bộ thì syncDirHandle luôn là null suốt phiên làm việc, khiến
-   "Lưu"/"Submit" không bao giờ tự đồng bộ được dù trước đó đã từng kết nối thư mục — đây là nguyên nhân
-   nhiều khả năng nhất khiến "một số máy" có vẻ như không đồng bộ %  hoàn thành tốt như các máy khác.
-   Nay khôi phục thư mục đã kết nối NGAY khi mở app, bất kể đang ở tab nào, cộng thêm 2 lớp đồng bộ nền
-   (chỉ chạy khi đã bật "Tự động đồng bộ nền" ở tab Đồng bộ, và không bao giờ tự ý mở hộp thoại xin quyền):
-   (1) đồng bộ định kỳ mỗi 3 phút trong lúc mở app, (2) đồng bộ ngay khi quay lại tab trình duyệt sau khi
-   đã chuyển sang app/tab khác — bắt kịp dữ liệu máy khác vừa đẩy lên mà không cần thao tác thủ công. */
-restoreSyncFolderFromIDB();
-setInterval(()=> maybeAutoSync("Tự động định kỳ"), 3*60*1000);
-document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") maybeAutoSync("Quay lại tab"); });
+/* Hiệu chỉnh: bắt kịp dữ liệu máy khác vừa đẩy lên Firebase mà không cần thao tác thủ công — tự tải lại
+   định kỳ mỗi 3 phút trong lúc mở app, và ngay khi quay lại tab trình duyệt sau khi đã chuyển sang
+   app/tab khác. Đăng nhập xong đã tự tải 1 lần (xem initLoginGate) — đây chỉ là bắt kịp thêm. */
+function maybeAutoPullFirebase(reasonLabel){
+  if(!firebaseConfigured()) return;
+  pullFromFirebaseCloud().then(r=>{
+    if(r.ok && (r.ctr.added || r.ctr.updated || r.ctr.logAdded || r.ctr.highlightAdded || r.ctr.highlightUpdated || r.ctr.cleanplanAdded || r.ctr.draftAdopted || r.ctr.draftMerged || r.ctr.evidenceTreeUpdated)){
+      logAction("Đồng bộ Cloud (Firebase)" + (reasonLabel ? ` (${reasonLabel})` : ""), syncLogNote(r.ctr), "");
+    }
+  }).catch(()=>{});
+}
+setInterval(()=> maybeAutoPullFirebase("Tự động định kỳ"), 3*60*1000);
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") maybeAutoPullFirebase("Quay lại tab"); });
 
 </script>
 </body>
