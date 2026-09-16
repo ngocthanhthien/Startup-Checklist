@@ -631,6 +631,7 @@ function saveEvidenceTreeOverride(){
   EVIDENCE_TREE_UPDATED_AT = Date.now();
   localStorage.setItem(LS_EVIDENCE_TREE, JSON.stringify(EVIDENCE_TREE_OVERRIDE));
   localStorage.setItem(LS_EVIDENCE_TREE_TS, String(EVIDENCE_TREE_UPDATED_AT));
+  scheduleCloudPush("Sửa Khu vực/Vị trí Evidence");
 }
 function addEvidenceLocation(area, name){
   name = (name||"").trim();
@@ -1019,6 +1020,7 @@ let ITEMS_OVERRIDE = loadItemsOverride();
 function saveItemsOverride(){
   ITEMS_OVERRIDE.updatedAt = Date.now();
   localStorage.setItem(LS_ITEMS, JSON.stringify(ITEMS_OVERRIDE));
+  scheduleCloudPush("Sửa danh mục Checklist");
 }
 function allItems(){ return ITEMS_OVERRIDE.items || DEFAULT_ITEMS; }
 function ensureItemsOverride(){ if(!ITEMS_OVERRIDE.items) ITEMS_OVERRIDE.items = JSON.parse(JSON.stringify(DEFAULT_ITEMS)); return ITEMS_OVERRIDE.items; }
@@ -1053,6 +1055,7 @@ function saveSettings(){
   SETTINGS.updatedAt = Date.now();
   localStorage.setItem(LS_SETTINGS, JSON.stringify(SETTINGS));
   applyBranding();
+  scheduleCloudPush("Sửa Cài đặt");
 }
 /* Loại bỏ dữ liệu ảnh nhúng trực tiếp (base64, storedIn:"inline") khỏi bản snapshot trước khi đẩy lên
    Firebase — chỉ đồng bộ Lịch sử phiên/Danh mục-Cài đặt/Nhật ký, KHÔNG đồng bộ ảnh bằng chứng lên Cloud
@@ -1102,7 +1105,13 @@ async function pullFromFirebaseCloud(){
     if(!snap.exists) return {ok:false, reason:"empty"};
     const remote = snap.data();
     if(!remote || !remote.data) return {ok:false, reason:"empty"};
-    const ctr = mergeRemoteData(remote.data);
+    /* Hiệu chỉnh: mergeRemoteData() gọi lại saveDraft()/saveSettings()/saveItemsOverride()/setHighlights()
+       để ÁP DỤNG dữ liệu vừa TẢI VỀ — không phải thay đổi mới của người dùng, nên tạm tắt lịch đẩy-hoãn
+       (scheduleCloudPush) trong lúc merge để không đẩy NGƯỢC lại đúng dữ liệu vừa nhận (lãng phí 1 lượt
+       ghi + gây nhiễu Data Log). try/finally đảm bảo luôn bật lại kể cả khi merge lỗi giữa chừng. */
+    __applyingRemoteMerge = true;
+    let ctr;
+    try{ ctr = mergeRemoteData(remote.data); } finally { __applyingRemoteMerge = false; }
     refreshOpenTabsAfterSync();
     markSyncedNow();
     return {ok:true, ctr};
@@ -1112,9 +1121,28 @@ async function pullFromFirebaseCloud(){
    chặn thao tác của người dùng và không hiện lỗi nếu chưa cấu hình Firebase. */
 function backgroundCloudSyncIfConfigured(reasonLabel){
   if(!firebaseConfigured()) return;
+  /* Đẩy ngay (không hoãn) — dùng cho các thao tác chốt rõ ràng (Lưu, Submit, thêm/xoá Highlight...).
+     Huỷ lịch đẩy-hoãn đang chờ (nếu có) vì sắp đẩy ngay ở đây rồi, tránh đẩy trùng lặp ngay sau đó. */
+  clearTimeout(__cloudPushDebounceTimer); __cloudPushDebounceTimer = null;
   pushToFirebaseCloud().then(r=>{
     if(r.ok) logAction("Đồng bộ Cloud (Firebase)" + (reasonLabel ? ` (${reasonLabel})` : ""), "Đẩy dữ liệu lên thành công", "");
   }).catch(()=>{});
+}
+/* Hiệu chỉnh: tự động đẩy lên Firebase LIÊN TỤC cho MỌI thay đổi dữ liệu (kể cả gõ ghi chú, tick Đạt/Không
+   đạt từng hạng mục...), không chỉ khi bấm "Lưu"/"Submit" — tránh mất dữ liệu nếu đóng trình duyệt/mất điện
+   giữa chừng. Dùng debounce (hoãn ~2.5s, gộp các thay đổi liên tiếp lại) để không đẩy 1 lần cho MỖI phím gõ
+   — chỉ đẩy sau khi người dùng tạm ngừng thao tác 1 chút, đủ nhanh để coi là "gần như realtime" mà không
+   spam ghi (write) lên Firestore. Gọi từ mọi hàm lưu dữ liệu cốt lõi: saveDraft, saveItemsOverride,
+   saveSettings, saveEvidenceTreeOverride, setHighlights. */
+let __cloudPushDebounceTimer = null;
+let __applyingRemoteMerge = false;
+function scheduleCloudPush(reasonLabel){
+  if(!firebaseConfigured() || __applyingRemoteMerge) return;
+  clearTimeout(__cloudPushDebounceTimer);
+  __cloudPushDebounceTimer = setTimeout(()=>{
+    __cloudPushDebounceTimer = null;
+    backgroundCloudSyncIfConfigured(reasonLabel);
+  }, 2500);
 }
 function applyBranding(){
   qs("#brandName").textContent = "Startup Checklist";
@@ -1143,6 +1171,7 @@ function saveDraft(){
   STATE.updatedAt = Date.now();
   localStorage.setItem(LS_DRAFT, JSON.stringify(STATE));
   const p = qs("#savePillTxt"); if(p) p.textContent = "Đã lưu nháp " + new Date().toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit"});
+  scheduleCloudPush("Tự động lưu Checklist");
 }
 function draftIsBlank(st){
   return !st || !st.items || (Object.keys(st.items).length===0 && !(st.header && st.header.note));
@@ -1165,7 +1194,7 @@ function mergeDraftItems(localItems, remoteItems){
   return {merged, added};
 }
 function getHistory(){ try{ return JSON.parse(localStorage.getItem(LS_HIST) || "[]"); }catch(e){ return []; } }
-function setHistory(list){ localStorage.setItem(LS_HIST, JSON.stringify(list)); }
+function setHistory(list){ localStorage.setItem(LS_HIST, JSON.stringify(list)); scheduleCloudPush("Sửa Lịch sử"); }
 function itemState(id){ return STATE.items[id] || {status:"pending", by:"", note:"", photos:[]}; }
 function setItemState(id, patch){ STATE.items[id] = Object.assign(itemState(id), patch); saveDraft(); }
 
@@ -2333,7 +2362,7 @@ function renderSync(){
   <div class="hint info">📁 Thư mục lưu ảnh bằng chứng được cấu hình tại tab <b>Cài đặt</b> — ảnh không đồng bộ lên Firebase, chỉ lưu trên ổ đĩa máy đó/thư mục dùng chung bạn tự chọn.</div>
   <div class="card">
     <div class="card-h"><span>☁️ Đồng bộ Cloud (Firebase)</span><span class="rule"></span></div>
-    <div class="sub">Đồng bộ qua Internet (không cần OneDrive/Google Drive, hoạt động trên mọi trình duyệt kể cả điện thoại) — đã cấu hình sẵn, dùng ngay không cần thiết lập gì thêm. <b>Hoàn toàn tự động</b>: đăng nhập xong tự tải dữ liệu mới nhất về, "Lưu"/"Submit" tự đẩy lên — không cần bấm nút nào ở đây. 2 nút bên dưới chỉ để đồng bộ lại thủ công khi cần (vd nghi ngờ dữ liệu chưa mới nhất). Không đồng bộ ảnh bằng chứng lên Firebase.</div>
+    <div class="sub">Đồng bộ qua Internet (không cần OneDrive/Google Drive, hoạt động trên mọi trình duyệt kể cả điện thoại) — đã cấu hình sẵn, dùng ngay không cần thiết lập gì thêm. <b>Hoàn toàn tự động, gần như realtime</b>: đăng nhập xong tự tải dữ liệu mới nhất về; mọi thay đổi (tick Đạt/Không đạt, gõ ghi chú, thêm/sửa/xoá Highlight, sửa Cài đặt...) tự đẩy lên Firebase sau ~2-3 giây tạm ngừng thao tác — không cần bấm "Lưu" mới được bảo vệ; "Lưu"/"Submit" vẫn đẩy lên ngay lập tức. 2 nút bên dưới chỉ để đồng bộ lại thủ công khi cần. Không đồng bộ ảnh bằng chứng lên Firebase.</div>
     <details style="margin:6px 0 0;">
       <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--muted);">⚙️ Nâng cao: dùng project Firebase khác (tuỳ chọn)</summary>
       <label class="fld" style="margin-top:8px;"><span class="lab">firebaseConfig (dạng JSON) — để trống để dùng cấu hình mặc định</span><textarea class="inp" id="firebaseCfgInput" rows="4" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...", ...}'>${esc(FIREBASE_CFG.configJson||"")}</textarea></label>
@@ -2826,9 +2855,9 @@ function isExcelBinaryFile(file){ return /\.(xlsx|xls)$/i.test(file.name||""); }
    Lưu độc lập trong localStorage (LS_HIGHLIGHT), không phụ thuộc STATE/draft của Checklist.
    Hiệu chỉnh: bổ sung Due date, Priority level, PIC (tuỳ chọn) + bắt buộc nhập/confirm PIC khi tick Done. */
 let HIGHLIGHT_FILTER = ""; // "" = tất cả các đợt, hoặc "YYYY-MM"
-let HIGHLIGHT_HIDE_DONE = false;
+let HIGHLIGHT_HIDE_DONE = true; // Hiệu chỉnh: mặc định ẩn các mục đã hoàn thành khi mở tab Highlight
 function getHighlights(){ try{ return JSON.parse(localStorage.getItem(LS_HIGHLIGHT) || "[]"); }catch(e){ return []; } }
-function setHighlights(list){ localStorage.setItem(LS_HIGHLIGHT, JSON.stringify(list)); }
+function setHighlights(list){ localStorage.setItem(LS_HIGHLIGHT, JSON.stringify(list)); scheduleCloudPush("Sửa Highlight"); }
 function currentPeriod(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
 function periodLabelVN(p){ if(!p) return "—"; const parts=p.split("-"); if(parts.length<2) return p; return `Tháng ${parseInt(parts[1],10)}/${parts[0]}`; }
 function normalizePriorityInput(v){
@@ -3940,7 +3969,17 @@ function maybeAutoPullFirebase(reasonLabel){
   }).catch(()=>{});
 }
 setInterval(()=> maybeAutoPullFirebase("Tự động định kỳ"), 3*60*1000);
-document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") maybeAutoPullFirebase("Quay lại tab"); });
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState==="visible") maybeAutoPullFirebase("Quay lại tab");
+  /* Hiệu chỉnh: nếu đang có lịch đẩy-hoãn (scheduleCloudPush) chờ sẵn mà người dùng chuyển tab/đóng
+     trình duyệt ngay lúc đó, setTimeout sẽ KHÔNG chạy được nữa — đẩy ngay lập tức khi rời tab để giảm
+     tối đa nguy cơ mất dữ liệu vừa nhập (không đảm bảo 100% kịp hoàn tất trước khi đóng hẳn, nhưng tốt
+     hơn nhiều so với chờ đủ 2.5s). */
+  if(document.visibilityState==="hidden" && __cloudPushDebounceTimer){
+    clearTimeout(__cloudPushDebounceTimer); __cloudPushDebounceTimer = null;
+    backgroundCloudSyncIfConfigured("Rời tab");
+  }
+});
 
 </script>
 </body>
