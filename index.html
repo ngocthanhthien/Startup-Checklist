@@ -910,7 +910,8 @@ function getFirestoreDb(){
     submitBtn.disabled = true;
     submitBtn.textContent = "Đang đăng nhập...";
     auth.signInWithEmailAndPassword(email, pass).catch(function(err){
-      errEl.textContent = "❌ Sai tài khoản hoặc mật khẩu";
+      console.error("Firebase Auth sign-in error:", err && err.code, err && err.message);
+      errEl.textContent = "❌ Sai tài khoản hoặc mật khẩu (mã lỗi: " + (err && err.code || "không rõ") + ")";
       errEl.style.display = "block";
       passEl.value = "";
       passEl.focus();
