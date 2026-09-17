@@ -257,6 +257,9 @@ input[type=checkbox]{-webkit-appearance:auto;appearance:auto;width:19px;height:1
 .hlbadge.pic{background:var(--teal-l);color:var(--teal-d);}
 /* Hiệu chỉnh: cho phép sửa PIC ngay trên từng dòng Highlight + hiển thị ghi chú/ảnh bằng chứng khi Hoàn thành */
 .hlPicInp{flex:0 0 auto;width:140px;min-height:38px;padding:8px 10px;font-size:12.5px;}
+/* Hiệu chỉnh: cho phép sửa Due date ngay trên từng dòng Highlight, giống PIC/Nội dung */
+.hlDueInp{flex:0 0 auto;width:150px;min-height:38px;padding:8px 10px;font-size:12.5px;}
+.hlDueInp.overdue{border-color:var(--fail);color:var(--fail);}
 .hlDoneInfo{flex:0 0 100%;width:100%;margin:2px 0 0 27px;padding:8px 10px;background:#F8FAFC;border:1px dashed var(--line);border-radius:10px;}
 .hlDoneNote{font-size:12.5px;color:var(--text);margin-bottom:6px;}
 .hlDoneInfo .photorow{margin:0;}
@@ -1206,17 +1209,31 @@ function computeSummaryFor(header, itemsState){
     if(s==="pass") pass++; else if(s==="fail") fail++; else if(s==="na") na++; else pending++;
     if(s!=="pass" && s!=="na" && (it.pri==="High" || it.pri==="Cao")) hiOpen++;
   });
-  const total = all.length, done = pass+fail+na;
+  /* Hiệu chỉnh: "Không đạt" KHÔNG tính là đã hoàn thành — % chỉ tính Đạt + N/A. Một hạng mục Không đạt
+     coi như còn tồn đọng cần xử lý (sửa lại thành Đạt sau khi khắc phục, hoặc N/A nếu không áp dụng),
+     nên sẽ giữ % dưới 100% và chặn Submit cho đến khi được xử lý lại — không còn coi Không đạt là 1
+     trạng thái chấm xong tương đương Đạt/N-A như trước. */
+  const total = all.length, done = pass+na;
   return {total, pass, fail, na, pending, pct: total? Math.round(done/total*100):0, hiOpen};
 }
 function computeSummary(){ return computeSummaryFor(STATE.header, STATE.items); }
+/* Mô tả lý do chưa đạt 100% (dùng chung cho hint dưới Checklist và toast khi bấm Submit) — tách rõ
+   2 nguyên nhân: còn hạng mục CHƯA CHẤM và còn hạng mục KHÔNG ĐẠT chưa được xử lý lại. */
+function pendingBlockReason(s){
+  const parts = [];
+  if(s.pending>0) parts.push(`${s.pending} hạng mục chưa chấm`);
+  if(s.fail>0) parts.push(`${s.fail} hạng mục Không đạt cần xử lý lại (sửa thành Đạt sau khi khắc phục, hoặc N/A nếu không áp dụng)`);
+  return parts.join(", ");
+}
 
 /* ===================== COLLAPSIBLE GROUPS (transient, per session) ===================== */
 let COLLAPSED_GROUPS = new Set();
 function groupKey(sectionKey, grp){ return sectionKey + "::" + grp; }
-/* group-level completion, used for badges + "Đạt hết nhóm" + ẩn nhóm đã xong */
+/* group-level completion, used for badges + "Đạt hết nhóm" + ẩn nhóm đã xong.
+   Hiệu chỉnh: đồng bộ với computeSummaryFor() — "Không đạt" không tính là đã xong, chỉ Đạt/N-A mới
+   được tính; nhóm còn hạng mục Không đạt sẽ không hiện 100%/tự thu gọn như đã xong. */
 function groupCompletion(items){
-  let done=0; items.forEach(it=>{ if(itemState(it.id).status!=="pending") done++; });
+  let done=0; items.forEach(it=>{ const s=itemState(it.id).status; if(s==="pass"||s==="na") done++; });
   return {done, total:items.length, pct: items.length? Math.round(done/items.length*100):0};
 }
 /* filter/display state for Checklist tab (transient, per session) */
@@ -1351,7 +1368,6 @@ function renderCheck(){
   const root = qs("#view-check");
   const s = computeSummary();
   const h = STATE.header;
-  const remaining = s.total - s.pass - s.fail - s.na;
   const {current, next} = currentNextStage();
   const dItems = displayItems();
   const filterActive = !!(SEARCH_QUERY || QUICK_FILTER!=="all" || CHECK_GROUP_FILTER || HIDE_PASS_ITEMS);
@@ -1446,7 +1462,7 @@ function renderCheck(){
       `}
     </div>
     ${EDITING_HISTORY_ID ? "" : (s.pct<100
-      ? `<div class="hint" style="margin:10px 0 0;">Còn <b>${remaining}</b> hạng mục chưa chấm (${s.pct}%) — cần hoàn thành <b>100%</b> mới Submit được. Dùng "Lưu" để tiếp tục sau.</div>`
+      ? `<div class="hint" style="margin:10px 0 0;">Còn ${esc(pendingBlockReason(s))} (${s.pct}%) — cần hoàn thành <b>100%</b> mới Submit được. Dùng "Lưu" để tiếp tục sau.</div>`
       : `<div class="hint ok" style="margin:10px 0 0;">✅ Đã hoàn thành 100% — sẵn sàng Submit để lưu chính thức vào Lịch sử.</div>`)}
   </div>
   `;
@@ -1878,8 +1894,7 @@ function submitSession(){
   if(!start || !end){ toast("Vui lòng nhập đủ Ngày bắt đầu và Ngày kết thúc"); return; }
   const summary = computeSummary();
   if(summary.pct < 100){
-    const remaining = summary.total - summary.pass - summary.fail - summary.na;
-    toast(`Chưa thể Submit — còn ${remaining} hạng mục chưa chấm (${summary.pct}%). Dùng "Lưu" để tiếp tục sau.`, 3200);
+    toast(`Chưa thể Submit — còn ${pendingBlockReason(summary)} (${summary.pct}%). Dùng "Lưu" để tiếp tục sau.`, 3200);
     return;
   }
   const rec = { id: genId("S"), savedAt: new Date().toISOString(), header: Object.assign({}, h), items: JSON.parse(JSON.stringify(STATE.items)), summary };
@@ -2116,12 +2131,33 @@ function buildSessionPrintHtml(rec){
 
 /* ===================== TAB: CHỈNH SỬA CHECKLIST ===================== */
 let EDIT_STATE = {id:null};
+/* Hiệu chỉnh: cho phép đổi vị trí hạng mục (trong cùng Công đoạn) ở tab Chỉnh sửa — thứ tự này áp dụng
+   luôn cho tab Checklist vì cả 2 tab đều hiển thị theo groupByStage(allItems()), tức là theo đúng thứ tự
+   phần tử trong mảng ITEMS_OVERRIDE.items. Dựng lại toàn bộ mảng theo thứ tự nhóm hiện tại sau khi hoán
+   đổi, để đảm bảo các hạng mục cùng Công đoạn luôn liền nhau trong mảng (an toàn cho các lần sửa sau). */
+function moveItemInStage(id, dir){
+  const list = ensureItemsOverride();
+  const groups = groupByStage(list);
+  const groupEntry = groups.find(([,its])=> its.some(x=>x.id===id));
+  if(!groupEntry) return;
+  const its = groupEntry[1];
+  const idx = its.findIndex(x=>x.id===id);
+  const swapIdx = idx + dir;
+  if(swapIdx < 0 || swapIdx >= its.length) return;
+  [its[idx], its[swapIdx]] = [its[swapIdx], its[idx]];
+  const rebuilt = [];
+  groups.forEach(([, groupItems])=> rebuilt.push(...groupItems));
+  ITEMS_OVERRIDE.items = rebuilt;
+  saveItemsOverride();
+  logAction("Đổi vị trí hạng mục Checklist", `${id} ${dir<0?"lên":"xuống"}`, id);
+  renderEdit();
+}
 function renderEdit(){
   const root = qs("#view-edit");
   let html = `
   <div class="card">
     <div class="section-title">Chỉnh sửa nội dung Checklist</div>
-    <div class="sub">Sửa/thêm/xoá hạng mục Checklist Start-up — danh sách được nhóm theo Công đoạn cho gọn. Thay đổi áp dụng ngay cho tab Checklist. Có thể khôi phục lại danh mục gốc (từ Start-up_checklist_1.xlsx) bất kỳ lúc nào.</div>
+    <div class="sub">Sửa/thêm/xoá hạng mục Checklist Start-up — danh sách được nhóm theo Công đoạn cho gọn. Dùng nút <b>⬆️/⬇️</b> để đổi vị trí hạng mục trong cùng Công đoạn — thứ tự hiển thị ở tab Checklist sẽ đúng theo thứ tự thiết lập ở đây. Thay đổi áp dụng ngay cho tab Checklist. Có thể khôi phục lại danh mục gốc (từ Start-up_checklist_1.xlsx) bất kỳ lúc nào.</div>
     <div class="btnrow">
       <button class="btn ghost sm" id="btnResetItems">↩️ Khôi phục Checklist mặc định (83 hạng mục gốc)</button>
     </div>
@@ -2146,7 +2182,7 @@ function renderEditSection(items){
   }
   const groups = groupByStage(items);
   let rows = groups.map(([grp, its])=>{
-    const rowsHtml = its.map(it=>{
+    const rowsHtml = its.map((it, idx)=>{
       const p = pri(it.pri);
       return `<div class="edtrow" data-id="${it.id}">
         <div class="info">
@@ -2154,6 +2190,8 @@ function renderEditSection(items){
           <div class="sm"><span class="badge src">${esc(it.topic)}</span> ${it.loc?(esc(it.loc)+" · "):""}<span class="badge ${p.cls}">${p.label}</span></div>
         </div>
         <div class="acts">
+          <button data-act="up" title="Di chuyển lên" ${idx===0?"disabled":""}>⬆️</button>
+          <button data-act="down" title="Di chuyển xuống" ${idx===its.length-1?"disabled":""}>⬇️</button>
           <button data-act="edit">✏️ Sửa</button>
           <button data-act="del">🗑️ Xoá</button>
         </div>
@@ -2202,7 +2240,9 @@ function bindEditSection(){
     const id = row.dataset.id;
     qsa("button", row).forEach(btn=>{
       btn.addEventListener("click", ()=>{
-        if(btn.dataset.act==="edit"){ EDIT_STATE = {id, editing:true}; renderEdit(); scrollToForm(); }
+        if(btn.dataset.act==="up"){ moveItemInStage(id, -1); }
+        else if(btn.dataset.act==="down"){ moveItemInStage(id, 1); }
+        else if(btn.dataset.act==="edit"){ EDIT_STATE = {id, editing:true}; renderEdit(); scrollToForm(); }
         else if(btn.dataset.act==="del"){
           if(confirm("Xoá hạng mục này khỏi Checklist?")){
             const list = ensureItemsOverride();
@@ -2764,7 +2804,7 @@ function renderGuide(){
     <p>Mỗi hạng mục gồm: <b>Công đoạn</b> (Khu vực: WH, TIP, ROA, EXT, EVAP, FD, FP, RW), <b>Vị trí cụ thể</b> (tuỳ chọn), <b>Chủ đề kiểm tra</b> (Cleaning / FB / Hygiene Permit — hiển thị như nhãn phụ), <b>Nội dung kiểm tra</b>, <b>Mô tả</b> và <b>Mức ưu tiên</b>. Checklist áp dụng chung cho mọi phiên Start-up, không còn phân biệt theo Dòng sản phẩm.</p>
     <h4>3. Các tab chính</h4>
     <ul>
-      <li><b>Checklist</b> — nhập liệu cho phiên Start-up hiện tại (đầu đề mục gồm <b>Đợt (Tháng/Năm)</b>, Ngày bắt đầu/Ngày kết thúc/Ghi chú chung — không còn Dòng sản phẩm/Batch/QA phụ trách; mỗi hạng mục đã có ô "Người thực hiện" riêng là đủ). Hạng mục nhóm theo <b>Công đoạn</b>, mỗi hạng mục gói gọn trong 1 hàng ngang: Nội dung kiểm tra và Mô tả hiển thị cân đối cạnh nhau, chữ đậm/màu tương phản cao dễ quan sát (Mô tả luôn hiện, không cần bấm "Xem thêm"); nút Đạt/Không đạt/N-A gộp thành 1 khối icon thu nhỏ bên phải, nút Thêm ảnh chỉ còn icon. Khối "Tiến độ theo Công đoạn" ở trên chỉ còn hàng bấm-để-nhảy-nhanh, mỗi Công đoạn hiện % + màu theo tỉ lệ hoàn thành ngay tại tên (đã bỏ các thanh progress bar ngang bên dưới cho gọn). Có thể <b>lọc chỉ xem 1 Công đoạn</b>, <b>thu gọn/mở rộng theo từng Công đoạn</b> (badge x/y cho biết tiến độ), <b>ẩn bớt những DÒNG đã tick Đạt</b> (chỉ còn hiện dòng Chưa chấm/Không đạt/N-A để đỡ rối mắt — badge x/y và nút "Đạt hết Công đoạn" vẫn tính trên toàn bộ, không bị ảnh hưởng), và dùng nút <b>"Đạt hết Công đoạn"</b> ở đầu mỗi nhóm để đánh dấu nhanh cả nhóm rồi chỉnh lại từng mục Không đạt/N-A sau. Dùng <b>"Lưu"</b> để lưu dở dang bất cứ lúc nào — bấm là lưu cục bộ VÀ tự đẩy ngay lên Firebase (tab Đồng bộ); <b>"Submit"</b> chỉ thực hiện được và lưu chính thức vào Lịch sử thành 1 đợt Shutdown/Start-up khi đã hoàn thành 100%, cũng luôn tự đẩy lên Firebase ngay, và <b>bảng Checklist sẽ tự reset về phiên mới trống</b> ngay sau khi Submit để bắt đầu phiên tiếp theo. Trong khối Dashboard tiến độ có 2 nút <b>"Xuất báo cáo Tiến độ"</b> (Ảnh PNG / PDF) — gộp 1 báo cáo gọn, có màu sắc gồm: Dashboard + Tiến độ theo Công đoạn (Checklist), danh sách Highlight chưa/đã hoàn thành trong cùng đợt, và % tiến độ nhập ảnh theo Khu vực (Evidence) của đúng đợt đó (theo trường <b>Đợt (Tháng/Năm)</b> đã nhập ở đầu phiên). Ảnh PNG tải về trực tiếp; PDF mở qua hộp thoại In của trình duyệt, chọn máy in "Save as PDF"/"Lưu dưới dạng PDF" để lưu file.</li>
+      <li><b>Checklist</b> — nhập liệu cho phiên Start-up hiện tại (đầu đề mục gồm <b>Đợt (Tháng/Năm)</b>, Ngày bắt đầu/Ngày kết thúc/Ghi chú chung — không còn Dòng sản phẩm/Batch/QA phụ trách; mỗi hạng mục đã có ô "Người thực hiện" riêng là đủ). Hạng mục nhóm theo <b>Công đoạn</b>, mỗi hạng mục gói gọn trong 1 hàng ngang: Nội dung kiểm tra và Mô tả hiển thị cân đối cạnh nhau, chữ đậm/màu tương phản cao dễ quan sát (Mô tả luôn hiện, không cần bấm "Xem thêm"); nút Đạt/Không đạt/N-A gộp thành 1 khối icon thu nhỏ bên phải, nút Thêm ảnh chỉ còn icon. Khối "Tiến độ theo Công đoạn" ở trên chỉ còn hàng bấm-để-nhảy-nhanh, mỗi Công đoạn hiện % + màu theo tỉ lệ hoàn thành ngay tại tên (đã bỏ các thanh progress bar ngang bên dưới cho gọn). Có thể <b>lọc chỉ xem 1 Công đoạn</b>, <b>thu gọn/mở rộng theo từng Công đoạn</b> (badge x/y cho biết tiến độ), <b>ẩn bớt những DÒNG đã tick Đạt</b> (chỉ còn hiện dòng Chưa chấm/Không đạt/N-A để đỡ rối mắt — badge x/y và nút "Đạt hết Công đoạn" vẫn tính trên toàn bộ, không bị ảnh hưởng), và dùng nút <b>"Đạt hết Công đoạn"</b> ở đầu mỗi nhóm để đánh dấu nhanh cả nhóm rồi chỉnh lại từng mục Không đạt/N-A sau. Dùng <b>"Lưu"</b> để lưu dở dang bất cứ lúc nào — bấm là lưu cục bộ VÀ tự đẩy ngay lên Firebase (tab Đồng bộ); <b>"Submit"</b> chỉ thực hiện được và lưu chính thức vào Lịch sử thành 1 đợt Shutdown/Start-up khi đã hoàn thành 100% — <b>lưu ý: hạng mục đánh "Không đạt" KHÔNG tính là đã hoàn thành</b> (chỉ Đạt/N-A mới tính), nên còn hạng mục Không đạt nào chưa xử lý lại (sửa thành Đạt sau khi khắc phục, hoặc N/A nếu không áp dụng) thì % sẽ không lên 100% và chưa Submit được — cũng luôn tự đẩy lên Firebase ngay, và <b>bảng Checklist sẽ tự reset về phiên mới trống</b> ngay sau khi Submit để bắt đầu phiên tiếp theo. Trong khối Dashboard tiến độ có 2 nút <b>"Xuất báo cáo Tiến độ"</b> (Ảnh PNG / PDF) — gộp 1 báo cáo gọn, có màu sắc gồm: Dashboard + Tiến độ theo Công đoạn (Checklist), danh sách Highlight chưa/đã hoàn thành trong cùng đợt, và % tiến độ nhập ảnh theo Khu vực (Evidence) của đúng đợt đó (theo trường <b>Đợt (Tháng/Năm)</b> đã nhập ở đầu phiên). Ảnh PNG tải về trực tiếp; PDF mở qua hộp thoại In của trình duyệt, chọn máy in "Save as PDF"/"Lưu dưới dạng PDF" để lưu file.</li>
       <li><b>Ảnh bằng chứng</b> — bấm icon máy ảnh để chọn file, hoặc bấm vào bất kỳ ô nào trong thẻ hạng mục rồi <b>dán ảnh bằng Ctrl+V</b> (copy/paste từ clipboard, ví dụ ảnh vừa chụp màn hình hoặc copy từ ứng dụng khác). Ảnh được tự động đặt tên theo <b>Công đoạn_Vị trí thẩm tra_Ngày-giờ thẩm tra</b> để tra đúng vị trí lưu ảnh theo từng chu kỳ kiểm tra.</li>
       <li><b>Highlight</b> — todolist ghi chú nhanh các lưu ý cần đặc biệt chú trọng trong 1 đợt Shutdown/Start-up cụ thể (gắn theo Tháng/Năm), có <b>Due date</b>, <b>Mức ưu tiên</b>, <b>PIC</b> (tuỳ chọn). Màn hình mặc định chỉ hiện <b>Danh sách Highlight</b> cho gọn — bấm nút <b>"➕ Thêm Highlight"</b> để mở hộp thoại thêm mới, trong đó có cả 2 cách: nhập tay 1 mục (Đợt, Due date, Nội dung, Mức ưu tiên, PIC) hoặc tải <b>file mẫu (Template)</b>/<b>nhập nhanh từ file CSV/Excel</b> (file Excel cần Save As CSV trước) để thêm nhiều dòng cùng lúc. <b>Nội dung và PIC có thể sửa trực tiếp</b> ngay trên từng dòng trong Danh sách (gõ xong bấm ra ngoài để lưu). Khi tick <b>Hoàn thành</b>, app mở hộp thoại yêu cầu confirm/đổi <b>PIC</b>, cho phép nhập thêm <b>ghi chú hoàn thành</b> và đính kèm <b>ảnh bằng chứng</b> (tuỳ chọn — chọn file hoặc dán Ctrl+V ngay trong hộp thoại); ảnh được lưu vào thư mục con <b>Evidencehighlight</b> ngay trong đúng "Shutdown Tháng-Năm" của Highlight đó (dùng chung "Thư mục lưu ảnh bằng chứng" ở tab Cài đặt — nếu chưa kết nối thư mục, ảnh sẽ được nén nhỏ và lưu trực tiếp trong dữ liệu). Ghi chú/ảnh hiển thị ngay dưới dòng Highlight đã hoàn thành, bấm vào ảnh để xem full màn hình/xoá. Mọi thao tác (thêm, sửa, Hoàn thành, xoá) đều tự động đẩy lên Firebase ngay.</li>
       <li><b>Evidence (Cleaning Evidence)</b> — lưu ảnh bằng chứng vệ sinh theo đúng vị trí thiết bị: (1) Chọn thư mục lưu ảnh, (2) chọn Khu vực + Vị trí thiết bị theo cây thư mục mặc định (ROASTING/EXTRACTION/EVAPORATION/FREEZE DRY/FILLING & PACKING/REWORK — có thể Thêm/Sửa/Xoá qua "Cài đặt Khu vực"/"Cài đặt Vị trí thiết bị" bên dưới), (3) Copy/Paste (Ctrl+V) hoặc chọn ảnh để lưu. Ảnh tự động đổi tên theo Vị trí + Ngày + Thứ tự, lưu vào thư mục con <b>Shutdown Tháng-Năm / Khu vực / Vị trí thiết bị</b>. Sau khi lưu, mục <b>"Ảnh đã lưu tại vị trí này"</b> hiện ngay các ảnh trong đúng thư mục đó (bấm vào ảnh để xem full màn hình/xoá, có nút "Làm mới danh sách ảnh"). Đầu tab có khối <b>"Tiến độ nhập ảnh theo Khu vực"</b> — mỗi Khu vực hiện % = số Vị trí đã có ảnh/tổng số Vị trí của khu vực đó (giống cách tính % mỗi Công đoạn bên Checklist), kèm % tổng thể; bấm vào 1 Khu vực để nhảy nhanh tới khu vực đó. Có mục <b>"Cài đặt Khu vực"</b> (sửa tên/thêm/xoá cả Khu vực) và <b>"Cài đặt Vị trí thiết bị"</b> (sửa tên/thêm mới Vị trí thiết bị cho Khu vực đang chọn, khôi phục về mặc định gốc khi cần) — không ảnh hưởng các ảnh đã lưu trước đó. Trong mục "Cài đặt Khu vực" có nút <b>"Xuất Excel (Khu vực &amp; Vị trí)"</b> — tải file <code>.xlsx</code> thật (2 cột: Khu vực, Vị trí thiết bị) đúng thứ tự đang hiển thị trên app, tiện chỉnh sửa/sắp xếp lại hàng loạt trong Excel; và <b>"Nhập từ Excel"</b> — chọn lại file <code>.xlsx</code> đó (đã sửa xong) để nạp lại, THAY THẾ toàn bộ cây Khu vực/Vị trí hiện tại theo đúng thứ tự các dòng trong file (có xác nhận trước khi áp dụng, không xoá ảnh đã lưu). <b>Thư mục lưu ảnh dùng CHUNG với "Thư mục lưu ảnh bằng chứng"</b> ở tab Cài đặt: ảnh Checklist tự động lưu vào thư mục con <code>Checklistevidence</code> ngay trong cùng "Shutdown Tháng-Năm".</li>
@@ -3159,10 +3199,11 @@ function renderHighlight(){
         <label class="hlcheck"><input type="checkbox" class="hlDone" ${h.done?"checked":""}></label>
         <input class="inp hlTextInp" value="${esc(h.text)}" title="Nội dung Highlight — sửa xong bấm ra ngoài để lưu">
         <input class="inp hlPicInp" list="staffList" placeholder="PIC" value="${esc(h.pic||"")}" title="Người phụ trách (PIC) — sửa xong bấm ra ngoài để lưu">
+        <input class="inp hlDueInp ${overdue?"overdue":""}" type="date" value="${esc(h.dueDate||"")}" title="Hạn hoàn thành (Due date) — để trống nếu không cần, sửa xong tự lưu">
         <div class="hlmeta">
           <span class="badge ${p.cls}">${esc(p.label)}</span>
           <span class="hlbadge">${esc(periodLabelVN(h.period))}</span>
-          ${h.dueDate ? `<span class="hlbadge ${overdue?"overdue":"due"}">${overdue?"⚠️ Trễ hạn ":"Hạn "}${esc(fmtDateVN(h.dueDate))}</span>` : ""}
+          ${overdue ? `<span class="hlbadge overdue">⚠️ Trễ hạn</span>` : ""}
         </div>
         <button class="hldel" data-delhl="${esc(h.id)}" title="Xoá">${ICONS.x}</button>
         ${(h.done && (h.doneNote || photos.length)) ? `
@@ -3223,6 +3264,18 @@ function renderHighlight(){
       it.pic = e.target.value.trim(); it.updatedAt = Date.now(); setHighlights(list);
       logAction("Sửa PIC Highlight", `${it.text} -> PIC: ${it.pic||"(trống)"}`, id);
       backgroundCloudSyncIfConfigured("Sửa PIC Highlight");
+    });
+  });
+  /* Hiệu chỉnh: cho phép chỉnh Due date ngay trên từng dòng, không chỉ đặt lúc tạo mới */
+  qsa(".hlDueInp", root).forEach(inp=>{
+    inp.addEventListener("change", e=>{
+      const row = e.target.closest(".hlrow"); const id = row.dataset.id;
+      const list = getHighlights();
+      const it = list.find(x=>x.id===id); if(!it) return;
+      it.dueDate = e.target.value || ""; it.updatedAt = Date.now(); setHighlights(list);
+      logAction("Sửa Due date Highlight", `${it.text} -> ${it.dueDate ? fmtDateVN(it.dueDate) : "(bỏ hạn)"}`, id);
+      backgroundCloudSyncIfConfigured("Sửa Due date Highlight");
+      renderHighlight();
     });
   });
   qsa("[data-delhl]", root).forEach(btn=>{
