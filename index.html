@@ -816,6 +816,19 @@ function loadEvidenceTreeUpdatedAt(){
 }
 let EVIDENCE_TREE_UPDATED_AT = loadEvidenceTreeUpdatedAt();
 function getEvidenceTree(){ return EVIDENCE_TREE_OVERRIDE || EVIDENCE_TREE; }
+/* Hiệu chỉnh: thứ tự Khu vực KHÔNG được phụ thuộc thứ tự khoá của object đã lưu — Firestore/JSON đồng bộ
+   có thể trả khoá theo thứ tự khác (vd. thứ tự bảng chữ cái), làm thanh tiến độ Evidence lệch với tab
+   Checklist. Luôn sắp theo thứ tự công đoạn chuẩn (ROA→EXT→EVAP→FD→FP→RW = thứ tự khai báo của
+   EVIDENCE_TREE gốc); Khu vực do người dùng tự thêm/đổi tên (không có trong cây gốc) xếp sau, giữ nguyên
+   thứ tự tương đối hiện có. */
+function getEvidenceAreas(tree){
+  const t = tree || getEvidenceTree();
+  const canon = Object.keys(EVIDENCE_TREE);
+  const keys = Object.keys(t);
+  const known = canon.filter(a=> Object.prototype.hasOwnProperty.call(t, a));
+  const extra = keys.filter(a=> canon.indexOf(a) < 0);
+  return known.concat(extra);
+}
 function ensureEvidenceTreeOverride(){
   if(!EVIDENCE_TREE_OVERRIDE) EVIDENCE_TREE_OVERRIDE = JSON.parse(JSON.stringify(EVIDENCE_TREE));
   return EVIDENCE_TREE_OVERRIDE;
@@ -907,7 +920,7 @@ function evidenceTreeExcelFileName(){
 function exportEvidenceTreeExcel(){
   if(typeof XLSX === "undefined"){ toast("Thiếu thư viện Excel — không thể xuất file"); return; }
   const tree = getEvidenceTree();
-  const areas = Object.keys(tree);
+  const areas = getEvidenceAreas(tree);
   const rows = [["Khu vực","Vị trí thiết bị"]];
   let totalLoc = 0;
   areas.forEach(a=>{
@@ -3843,7 +3856,7 @@ async function getEvidenceLocDirAssumingPermission(periodFolderName, area, locat
    được quyền đọc-ghi — KHÔNG được âm thầm coi là 0%), "ok" (rows: [{area, doneCount, total, pct}]). */
 async function computeEvidenceTreeProgress(period){
   const tree = getEvidenceTree();
-  const areas = Object.keys(tree);
+  const areas = getEvidenceAreas(tree);
   const totalLocAll = areas.reduce((s,a)=> s + (tree[a]||[]).length, 0);
   if(!evidenceDirHandle) return {status:"disconnected"};
   if(totalLocAll === 0) return {status:"empty"};
@@ -3919,7 +3932,7 @@ function renderCleaningEvidence(){
   const root = qs("#view-evidence");
   if(!EVIDENCE_STATE.period) EVIDENCE_STATE.period = currentPeriod();
   const tree = getEvidenceTree();
-  const areas = Object.keys(tree);
+  const areas = getEvidenceAreas(tree);
   const locations = EVIDENCE_STATE.area ? (tree[EVIDENCE_STATE.area]||[]) : [];
   const ready = !!(evidenceDirHandle && EVIDENCE_STATE.area && EVIDENCE_STATE.location);
   root.innerHTML = `
